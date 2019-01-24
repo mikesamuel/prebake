@@ -311,6 +311,13 @@ functions like `document.createElement` should be handled by monkey-patching
 those to create a `CreateViaCall` entry.  That might also be the easiest way
 to handle *Symbol* creation and potential multiple-realm issues.
 
+TODO: Do we need a *ValuePool*.closure that lets us effectively pool
+closures that share stack frames perhaps by rewriting `let shared;
+function f() { return shared }` to something like `let closedOver = {
+shared: undefined }; function f() { return closedOver.shared; }` so
+that we can pool closedOver when a function value is created by
+evaluating a function expression?
+
 *ValuePool*.compact(*startingPoints*) behaves similar to mark and sweep:
 1.  Resolves startingPoints to pool entries in the *WeakMap* and marks those
     as needed.  TODO: This probably requires maintaining a reverse *WeakMap* mapping
