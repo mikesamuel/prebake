@@ -106,8 +106,8 @@ Let's define:
   <dt>prebakery</dt>
   <dd>a code preprocessor that takes a program and returns a program that is
   functionally equivalent (see caveat above) but which contains no references to
-  *moot* declarations, and which makes a best effort to pre-compute the result of
-  *eager* references.</dd>
+  moot declarations, and which makes a best effort to pre-compute the result of
+  eager references.</dd>
 </dl>
 
 Our input will be *JavaScript* with two possible extra annotations.
