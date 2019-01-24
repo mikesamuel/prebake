@@ -79,7 +79,7 @@ and either
 We want to preserve semantics where possible.
 
 Our end goal is to have `eval` and `Function` no longer needed.
-Functions that definitely use these should be moot by the time
+Functions that definitely use these should be *moot* by the time
 the system opens up to untrusted inputs.
 
 Preserving semantics perfectly does not seem possible, so we will bite the
@@ -89,10 +89,10 @@ bullet and allow that order of execution may change in predictable ways.
 marked declarations and expressions that depend on clearly marked
 declarations may execute before those that are/do not.
 
-----
-
 Some functions may use *moot* functions if they're available but
-not in all possible code-paths.
+not in all possible code-paths.  We will call these functions *eager*.
+
+Let's define:
 
 <dl>
   <dt>moot</dt>
@@ -103,10 +103,14 @@ not in all possible code-paths.
   all cases.</dd>
   <dt>early</dt>
   <dd>either eager or early</dd>
+  <dt>prebakery</dt>
+  <dd>a code preprocessor that takes a program and returns a program that is
+  functionally equivalent (see caveat above) but which contains no references to
+  *moot* declarations, and which makes a best effort to pre-compute the result of
+  *eager* references.</dd>
 </dl>
 
 Our input will be *JavaScript* with two possible extra annotations.
-
 After `const` or `function` and before an identifier, a programmer may specify
 that the declaration is *moot* or *eager* thus:
 
@@ -138,7 +142,6 @@ for (const /* @prebake.moot */ element of sequence) { ... }
 // If you want to generate code based on a moot function* then
 // use a top level
 ```
-
 
 
 ## Algorithms
