@@ -102,8 +102,8 @@ not in all possible code-paths.
   <dd>a function is eager if it should run early where possible, but may not in
   all cases.</dd>
   <dt>early</dt>
-  <dd>
-</dt>
+  <dd>either eager or early</dd>
+</dl>
 
 Our input will be *JavaScript* with two possible extra annotations.
 
