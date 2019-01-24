@@ -259,18 +259,19 @@ Given a set of starting modules that may use `/* @prebake... */` annotations:
         1.  Otherwise raise an error
 1.  Emit the rewitten ASTs, serialized value pool, and source maps.
 
-### Value pool agorithm.
+### Value pool type
 
 The goal of the value pool algorithm is to let prebaked output code reconstruct
 the portion of the object graph created by early-running code.
 
 A value pool's state of
 *   A WeakMap that maps pooled values to [proxy, valueHistory]
-    *     proxy keeps valueHistory up-to-date by trapping sets/deletes
-          and property redefinitions.
-          It may also trap construct for functions to create new
-          entries with *CreateViaConstruct* entries.
-* A sequence counter.
+    *   proxy keeps valueHistory up-to-date by trapping sets/deletes
+        and property redefinitions.
+        It may also trap construct for functions to create new
+        entries with *CreateViaConstruct* entries.
+*   A sequence counter so that we can reorder history entries
+    once we've figure out which objects the prebaked output will need.
 
 A value history is a set of mutations that will recreate an object.
 A value history is represented as an array whose elements are one of:
@@ -282,6 +283,8 @@ A value history is represented as an array whose elements are one of:
 *   Delete (property name or symbol)
 Each history entry has a sequence number so that the compact algorithm
 can order history entries for object that outlive prebaking.
+
+#### Value pool methods
 
 *ValuePool*.pool(*x*):
 1.  If *x* is a primitive and not a symbol, return it.
