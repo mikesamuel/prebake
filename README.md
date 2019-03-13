@@ -333,13 +333,17 @@ A value pool's state of
     once we've figure out which objects the prebaked output will need.
 
 A value history is a set of mutations that will recreate an object.
-A value history is represented as an array whose elements are one of:
-*   CreateViaCall (callee, this value, arguments)
-*   CreateViaConstruct (callee, arguments)
-*   SetPrototypeOf (value)
-*   DefineProperty (property name or symbol, descriptor)
-*   Set (property name or symbol, value)
-*   Delete (property name or symbol)
+A value history is represented as
+1.  An origin event.  One of
+    *   CreateViaCall (callee, this value, arguments)
+    *   CreateViaConstruct (callee, arguments)
+    *   GetFromGlobal (property name or symbol)
+1.  An ordered array of changes in
+    *   SetPrototypeOf (value)
+    *   DefineProperty (property name or symbol, descriptor)
+    *   Set (property name or symbol, value)
+    *   Delete (property name or symbol)
+    *   SetNonExtensible
 Each history entry has a sequence number so that the compact algorithm
 can order history entries for object that outlive prebaking.
 
