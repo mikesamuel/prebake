@@ -10,11 +10,11 @@ problems (like error-prone APIs) that have bitten team members in the past,
 and towards good practices.
 
 Integrated with CI and CD systems, they can loop in a specialist to get
-extra eyes on tricky code.
+the right eyes on tricky code.
 
 This makes build system hooks the ideal place for a security team to
-put in controls to help quick moving development teams follow security
-guidelines.
+put in controls to help quick moving development teams stick to security
+guidelines and know when to adapt them to changing requirements.
 
 But many quick moving development teams can't afford to dedicate a
 team member to maintaining build scripts and teaching other team
@@ -107,13 +107,6 @@ adapt to the environment.  Generating code may be the only way to:
 *  Compile code in a [domain specific language][], like HTML templates,
    to JavaScript functions.
 
-It's not the only way to do meta-programming tricks like
-
-*  the [core-js][core-js-example] one (15M downloads/week)
-*  creating wrapper functions with the right `.length`
-
-but safe to do so.
-
 ### Checking uses of `eval`
 
 Some proposals like
@@ -166,9 +159,31 @@ For example:
 A *Prebakery* takes a set of JS modules, runs `eval` and `new Function` early,
 and
 
-*  either emits an equivalent JavaScript program that does not depend
+*  emits an equivalent[#caveat-not-equivalent](*) JavaScript program that does not depend
    on `eval` and `new Function`
-*  or reports which uses it could not precompute.
+*  and reports which uses it could not precompute.
+
+The prebakery is written entirely in JavaScript so can run anywhere that the JS program that
+it hoists could.
+
+
+## Rejected Alternatives
+
+### Macros
+
+Macro systems are widely discussed in PL literature and an elegant way to assume some
+build system functions in languages like [Clojure](https://clojure.org/reference/macros).
+
+Any macro system would not address existing uses of string->code operators like `eval` and
+`Function` (See discussion of "legacy" code above).
+
+The proposed prebakery could probably interoperate with
+[babel-plugin-macros](https://github.com/kentcdodds/babel-plugin-macros).
+
+> babel-plugin-macros defines a standard interface for libraries that
+> want to use compile-time code transformation without requiring the
+> user to add a babel plugin to their build system
+
 
 ## Design and interface
 
@@ -180,6 +195,8 @@ the system opens up to untrusted inputs.
 
 Preserving semantics perfectly does not seem possible, so we will bite the
 bullet and allow that order of execution may change in predictable ways.
+
+<a name="caveat-not-equivalent"></a>
 
 **Caveat**: Semantics may differ in that the initializers for clearly
 marked declarations and expressions that depend on clearly marked
@@ -299,7 +316,7 @@ all modules and the module import graph are available as analyzable
 artifacts.
 
 
-## Algorithms and Internal DataTypes
+## Algorithms and internal data types
 
 ### Value pool type
 
