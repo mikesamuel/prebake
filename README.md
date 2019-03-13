@@ -1,6 +1,73 @@
-# Eval, The Good Parts.
+# Prebake
 
-> ## `eval` is Evil
+# Motivation
+
+## Getting the benefits of a well-defined build pipeline early.
+
+Teams that have a well-defined build process can hook in tools that catch
+problems early, guide developers (especially newer team members) away from
+problems (like error-prone APIs) that have bitten team members in the past,
+and towards good practices.
+
+Integrated with CI and CD systems, they can loop in a specialist to get
+extra eyes on tricky code.
+
+This makes build system hooks the ideal place for a security team to
+put in controls to help quick moving development teams follow security
+guidelines.
+
+But many quick moving development teams can't afford to dedicate a
+team member to maintaining build scripts and teaching other team
+members to use and maintain them.  Worst case, when that team member
+goes on vacation and they run into a thorny problem, the team has to
+choose between moving slower or abandoning the build system.
+
+This contributes to build systems being used not at all, or added
+towards the end of a product lifecycle, when the code controls are
+too late to do anything other than complain about what's now legacy
+code.
+
+Hypothesis: to bring the benefits of build systems to small organizations
+that can't dedicate a build maintainer, it is sufficient to allow build
+system functions be initiated by user code without stepping out of the
+JS that developers know into BUILD or scripting languages that need to
+replicate information already present in the program's source
+
+Imagine if this worked:
+
+```js
+// An instrumented runtime keeps track of who imports whom.
+import from './src/foo';
+// A long-lived process will generate JS from DSL on demand
+// the way a good IDE does.
+import default as fooTemplate from './src/templates/foo.handlebars.js';
+
+function main() {
+  addEventListener('programWhole', () => {
+    // Grab set of modules and run analyzers.
+    ...
+    // Look at module import graph and generate a list of not-yet-reviewed
+    // uses of error-prine APIs that can be flagged when the PR makes it into
+    // master.
+    ...
+    // Produce extra artifacts for resource integrity checks
+    ...
+    // Merge all modules loaded into a single dist/production-bundle.js
+    ...
+  });
+}
+```
+
+Hopefully, by treating an explicit build step as an optional
+optimization step the team can develop their code alongside controls
+that surface the concerns of specialists like security blue-teamers on
+an ongoing basis, and later in the development process add more build
+machinery later when things like shipped code size become critical.
+
+
+## Eval, The Good Parts.
+
+> ### `eval` is Evil
 >
 > The `eval` function is the most misused feature of JavaScript. Avoid it.
 >
@@ -23,7 +90,9 @@ This prevents the use of security measures like:
 
 which turn off `eval` globally.
 
-## Why do responsible programmers `eval`?
+# Analysis
+
+### Why do responsible programmers `eval`?
 
 Any solution to the `eval` problem has to acknowledge that there are legitimate
 use cases.
@@ -45,7 +114,7 @@ It's not the only way to do meta-programming tricks like
 
 but safe to do so.
 
-## Checking uses of `eval`
+### Checking uses of `eval`
 
 Some proposals like
 [Trusted Types](https://wicg.github.io/trusted-types/dist/spec/#string-compilation)
@@ -56,19 +125,46 @@ a way that blue-teamers can double check.
 It's going to take some time for library code to change to take that into account
 though.
 
-## What distinguishes "good" `eval`?
+### What distinguishes "good" `eval`?
 
-The legitimate use cases I've seen all have the property that they could happen
-before the system starts processing untrusted inputs.
+We should seek to preserve the aspects of JavaScript's dynamism that
+allow JavaScript programs to adapt to their environment without
+preserving those that leave them vulnerable to attacker-controlled
+strings.
+
+The legitimate use cases I've seen all have the property that they
+could happen before the system starts processing untrusted inputs.
 
 [Ad-hoc reporting](https://www.techopedia.com/definition/30294/ad-hoc-reporting)
 is important but not, IMO, a good use of `eval`.  It involves executing equations
 reached over the network, and careful library code can do that efficiently.
+After discussing ["The Node Security Roadmap"](https://nodesecroadmap.fyi/chapter-2/what-about-eval.html),
+Math.js [got rid of all uses of `eval`](https://github.com/josdejong/mathjs/issues/1019#issuecomment-367289278).
 
-## Proposal
+### Unnecessary but safe uses of dynamic code loading in legacy code.
+
+Some widely used legacy modules dynamically load code despite their being
+better alternatives.  Adoption will be slow unless those are handled transparently.
+
+For example:
+
+*  [lodash](https://github.com/lodash/lodash/blob/c541e4ccdc22413eed96572acdce3b0b5fe0cb61/.internal/root.js#L7)
+   (20.7 downloads/week) and
+   [core-js](https://github.com/zloirock/core-js/blob/8a36f326ec636ebe8789dbbb8b8006d527d9882a/packages/core-js/internals/global.js#L5)
+   (17.3M downloads/week) uses `Function('return this')()` to get a handle to the global object.
+*  [depd](https://github.com/dougwilson/nodejs-depd/blob/6d59c85d093092e65ec77033576417d743079fa0/index.js#L413-L433)
+   (9.9M downloads/week)
+   and [promise](https://github.com/then/promise/issues/150) (7.8M downloads/week)
+   use `new Function` to create function wrappers with the same `.length` to meet
+   strict backwards compatibility constraints.
+   Proxies would work, but only on modern JS engines and there are performance
+   concerns.
+
+
+# Proposal
 
 A *Prebakery* takes a set of JS modules, runs `eval` and `new Function` early,
-and either
+and
 
 *  either emits an equivalent JavaScript program that does not depend
    on `eval` and `new Function`
@@ -143,10 +239,146 @@ for (const /* @prebake.moot */ element of sequence) { ... }
 // use a top level
 ```
 
+## Changes to JavaScript API
 
-## Algorithms
+### `eval(AST)` will inline code.
+
+Per JS semantics ([18.2.1.1](https://tc39.github.io/ecma262/#sec-performeval) step 2)
+`eval(x)` is *x* when `typeof x !== 'string'`.  When running
+under the prebakery, if *x* is a string or AST, then the prebakery will wrap *x*
+in a function that takes its free variables as arguments, and put it in a
+lookup table, so that previously seen versions of *x* are executable at
+compile time.  Passing an *x* that is neither a string, nor an AST is a fatal
+error.  For compatibility we may allow *null*/*undefined* through.
+
+## New global function `Module()`.
+
+`Function(...)` allows parsing a string as a *FunctionBody* but there is no
+programmatic way to parse a string as a *ModuleBody*.
+
+We will extend the builtins with a global *Module* function that returns a
+module identifier that may be used with the `import(...)` operator.
+
+When running under the prebakery, the argument will be added to the set of
+modules to output.
+
+The polyfill below can implement `Module` when not running under the prebakery:
+
+```js
+function Module(body) {
+  // ASTs not supported in polyfill mode
+  if (typeof body !== 'string') { throw new TypeError(); }
+  // +module not supported per https://mathiasbynens.be/demo/javascript-mime-type
+  // but not needed since this URL only needs to work with import(...).
+  // TODO: test body containing '#'.
+  return `data:text/javascript,${ encodeURIComponent(body) }`;
+}
+```
+
+TODO: Hang `Module` and other extension points off `global.prebake`?
+
+## `addEventListener('programWhole', function () { ... })`
+
+A program's main module should be able to hook into the prebakery once
+the set of modules available.
+
+This will allow user code to assume many build-system duties like
+running code quality scanners and linters.
+
+There are two common idioms for reacting to events that are scoped to
+the whole program.
+
+*  In the browser, [`window.addEventListener`](https://developer.mozilla.org/en-US/docs/Web/Guide/Events/Creating_and_triggering_events#Creating_custom_events).
+*  In Node.js, [`process.on`](https://nodejs.org/api/process.html#process_process_events)
+
+There is no reason to prefer one to the other, so the idioms
+
+`global.prebake.addEventListener('programWhole', f)`,
+`global.prebake.on('programWhole', f)` should register f to run once
+all modules and the module import graph are available as analyzable
+artifacts.
+
+
+## Algorithms and Internal DataTypes
+
+### Value pool type
+
+The goal of the value pool algorithm is to let prebaked output code reconstruct
+the portion of the object graph created by early-running code.
+
+A value pool's state of
+*   A WeakMap that maps pooled values to [proxy, valueHistory]
+    *   proxy keeps valueHistory up-to-date by trapping sets/deletes
+        and property redefinitions.
+        It may also trap construct for functions to create new
+        entries with *CreateViaConstruct* entries.
+*   A sequence counter so that we can reorder history entries
+    once we've figure out which objects the prebaked output will need.
+
+A value history is a set of mutations that will recreate an object.
+A value history is represented as an array whose elements are one of:
+*   CreateViaCall (callee, this value, arguments)
+*   CreateViaConstruct (callee, arguments)
+*   SetPrototypeOf (value)
+*   DefineProperty (property name or symbol, descriptor)
+*   Set (property name or symbol, value)
+*   Delete (property name or symbol)
+Each history entry has a sequence number so that the compact algorithm
+can order history entries for object that outlive prebaking.
+
+We will assume, for efficiency, that no *\[\[Get\]\]* on a non getter
+property mutates state.  There may be corner cases around Proxy objects
+that violate this, but those should be corrigible by intercepting calls
+to `new Proxy` if needed.
+
+#### Value pool methods
+
+*ValuePool*.pool(*x*):
+1.  If *x* is a primitive and not a symbol, return it.
+1.  If the WeakMap has *x*,
+    1.  Return the proxy portion of the value corresponding to *x* in the WeakMap.
+1.  If *x* is a symbol
+    1.  Determine whether `Symbol.for` created it or not.
+    1.  Record how to recreate it in the pool.
+    1.  Return *x*.
+1.  Otherwise *x* is an object, array, or function.
+    1.  Let *p* be a proxy over *x* that traps mutations to *x* and
+        adds history to the pool.
+    1.  Put the entry [ *x*, *p* ] in the WeakMap.
+    1.  Return *p*.
+
+*ValuePool*.new(*x*):
+1.  If `x` is an object, array, or function and is not a key in the WeakMap:
+    Create history records based on the prototype of `x` and its own symbols and
+    property names.
+1.  Return the result of calling *ValuePool*.pool(*x*).
+
+TODO: Can we combine .pool and .new?  Any objects created by calling host
+functions like `document.createElement` should be handled by monkey-patching
+those to create a `CreateViaCall` entry.  That might also be the easiest way
+to handle *Symbol* creation and potential multiple-realm issues.
+
+TODO: Do we need a *ValuePool*.closure that lets us effectively pool
+closures that share stack frames perhaps by rewriting `let shared;
+function f() { return shared }` to something like `let closedOver = {
+shared: undefined }; function f() { return closedOver.shared; }` so
+that we can pool closedOver when a function value is created by
+evaluating a function expression?
+
+*ValuePool*.compact(*startingPoints*) behaves similar to mark and sweep:
+1.  Resolves startingPoints to pool entries in the *WeakMap* and marks those
+    as needed.  TODO: This probably requires maintaining a reverse *WeakMap* mapping
+    proxies to the objects they wrap.
+1.  While the needed set is increasing:
+    1.  Walk needed values' histories and marks as needed any objects
+        that appear as values or arguments in history entries.
+1.  Merge sort the histories for all needed values by sequence number to come up
+    with a recipe that will recreate the object graph.
+1.  Return the recipe.
 
 ### Prebake algorithm
+
+TODO: This is almost certainly wrong.  Rewrite it entirely.
 
 Given a set of starting modules that may use `/* @prebake... */` annotations:
 
@@ -262,75 +494,6 @@ Given a set of starting modules that may use `/* @prebake... */` annotations:
         1.  Otherwise raise an error
 1.  Emit the rewitten ASTs, serialized value pool, and source maps.
 
-### Value pool type
-
-The goal of the value pool algorithm is to let prebaked output code reconstruct
-the portion of the object graph created by early-running code.
-
-A value pool's state of
-*   A WeakMap that maps pooled values to [proxy, valueHistory]
-    *   proxy keeps valueHistory up-to-date by trapping sets/deletes
-        and property redefinitions.
-        It may also trap construct for functions to create new
-        entries with *CreateViaConstruct* entries.
-*   A sequence counter so that we can reorder history entries
-    once we've figure out which objects the prebaked output will need.
-
-A value history is a set of mutations that will recreate an object.
-A value history is represented as an array whose elements are one of:
-*   CreateViaCall (callee, this value, arguments)
-*   CreateViaConstruct (callee, arguments)
-*   SetPrototypeOf (value)
-*   DefineProperty (property name or symbol, descriptor)
-*   Set (property name or symbol, value)
-*   Delete (property name or symbol)
-Each history entry has a sequence number so that the compact algorithm
-can order history entries for object that outlive prebaking.
-
-#### Value pool methods
-
-*ValuePool*.pool(*x*):
-1.  If *x* is a primitive and not a symbol, return it.
-1.  If the WeakMap has *x*,
-    1.  Return the proxy portion of the value corresponding to *x* in the WeakMap.
-1.  If *x* is a symbol
-    1.  Determine whether `Symbol.for` created it or not.
-    1.  Record how to recreate it in the pool.
-    1.  Return *x*.
-1.  Otherwise *x* is an object, array, or function.
-    1.  Let *p* be a proxy over *x* that traps mutations to *x* and
-        adds history to the pool.
-    1.  Put the entry [ *x*, *p* ] in the WeakMap.
-    1.  Return *p*.
-
-*ValuePool*.new(*x*):
-1.  If `x` is an object, array, or function and is not a key in the WeakMap:
-    Create history records based on the prototype of `x` and its own symbols and
-    property names.
-1.  Return the result of calling *ValuePool*.pool(*x*).
-
-TODO: Can we combine .pool and .new?  Any objects created by calling host
-functions like `document.createElement` should be handled by monkey-patching
-those to create a `CreateViaCall` entry.  That might also be the easiest way
-to handle *Symbol* creation and potential multiple-realm issues.
-
-TODO: Do we need a *ValuePool*.closure that lets us effectively pool
-closures that share stack frames perhaps by rewriting `let shared;
-function f() { return shared }` to something like `let closedOver = {
-shared: undefined }; function f() { return closedOver.shared; }` so
-that we can pool closedOver when a function value is created by
-evaluating a function expression?
-
-*ValuePool*.compact(*startingPoints*) behaves similar to mark and sweep:
-1.  Resolves startingPoints to pool entries in the *WeakMap* and marks those
-    as needed.  TODO: This probably requires maintaining a reverse *WeakMap* mapping
-    proxies to the objects they wrap.
-1.  While the needed set is increasing:
-    1.  Walk needed values' histories and marks as needed any objects
-        that appear as values or arguments in history entries.
-1.  Merge sort the histories for all needed values by sequence number to come up
-    with a recipe that will recreate the object graph.
-1.  Return the recipe.
 
 
 [core-js-example]: https://github.com/zloirock/core-js/blob/2a005abe68520248d4431cab70d86e40b55d6e98/packages/core-js/internals/global.js#L5

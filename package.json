@@ -1,0 +1,51 @@
+{
+  "name": "prebake",
+  "version": "1.0.0",
+  "description": "Given JavaScript evaluates eval early so that the result can run with eval turned off",
+  "main": "prebake.ts",
+  "scripts": {
+    "build": "tsc",
+    "cover": "istanbul cover _mocha",
+    "coveralls": "npm run cover -- --report lcovonly && cat ./coverage/lcov.info | coveralls",
+    "lint": "tslint --project .",
+    "prepack": "npm run lint && npm test && ./scripts/make-md-toc.pl README.md",
+    "test": "mocha",
+    "type-check": "tsc --noEmit",
+    "type-check:watch": "npm run type-check -- --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikesamuel/prebake.git"
+  },
+  "keywords": [
+    "staged",
+    "precompiler",
+    "eval"
+  ],
+  "author": "mikesamuel",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/mikesamuel/prebake/issues"
+  },
+  "homepage": "https://github.com/mikesamuel/prebake#readme",
+  "devDependencies": {
+    "@babel/cli": "^7.2.0",
+    "@babel/plugin-proposal-class-properties": "^7.2.1",
+    "@babel/plugin-proposal-object-rest-spread": "^7.2.0",
+    "@babel/preset-env": "^7.2.0",
+    "@babel/preset-typescript": "^7.1.0",
+    "@types/babel__core": "^7.0.4",
+    "@types/babel__generator": "^7.0.1",
+    "@types/babel__template": "^7.0.1",
+    "@types/babel__traverse": "^7.0.4",
+    "@types/node": "^10.12.18",
+    "chai": "^4.2.0",
+    "eslint": "^5.12.1",
+    "mocha": "^5.2.0",
+    "tslint": "^5.12.1",
+    "typescript": "^3.2.2"
+  },
+  "dependencies": {
+    "@babel/core": "^7.2.0"
+  }
+}
