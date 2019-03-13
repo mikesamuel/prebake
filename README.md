@@ -320,8 +320,10 @@ artifacts.
 
 ### Value pool type
 
-The goal of the value pool algorithm is to let prebaked output code reconstruct
-the portion of the object graph created by early-running code.
+The goal of the value pool is to let prebaked output code reconstruct
+the portion of the object graph created by early-running code that is
+still needed by output code.  Output code might initialize a global
+variable to an object that was created and mutated by early running code.
 
 A value pool's state of
 *   A WeakMap that maps pooled values to [proxy, valueHistory]
