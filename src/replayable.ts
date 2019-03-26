@@ -11,15 +11,24 @@ const globalObject: object =
       (() => { throw new Error() })();
 
 const {
-  setPrototypeOf: refSetPrototypeOf,
-  preventExtensions: refPreventExtensions,
-  get: refGet,
-  set: refSet,
-  deleteProperty: refDeleteProperty,
   defineProperty: refDefineProperty,
+  deleteProperty: refDeleteProperty,
   apply: refApply,
   construct: refConstruct,
+  get: refGet,
+  getOwnPropertyDescriptor: refGetOwnPropertyDescriptor,
+  getPrototypeOf: refGetPrototypeOf,
+  has: refHas,
+  isExtensible: refIsExtensible,
+  ownKeys: refOwnKeys,
+  preventExtensions: refPreventExtensions,
+  set: refSet,
+  setPrototypeOf: refSetPrototypeOf,
 } = Reflect;
+
+const {
+  isArray
+} = Array;
 
 const error = console.error.bind(console);
 
@@ -48,47 +57,47 @@ for (const key of (Object.getOwnPropertyNames(Set.prototype) as Array<keyof Set<
 // for us to be able to lookup properties on generic events without recourse to hasOwnProperty.
 type ApplyEvent =
   { type: 'apply',
-    seq: number, p?: null, x: Function, y?: null, z?: null,
+    seq: number, p?: null, x: Function, y?: null, //z?: null,
     thisValue: any, args: any[], __proto__: null };
 type ConstructEvent =
   { type: 'construct',
-    seq: number, p?: null, x: new(...args:any[])=>any, y: any, z?: null,
+    seq: number, p?: null, x: new(...args:any[])=>any, y?: null, //z?: null,
     thisValue?: null, args: any[], __proto__: null };
 type SetEvent =
   { type: 'set',
-    seq: number, p: PropertyKey, x: object, y: any, z: object,
+    seq: number, p: PropertyKey, x: object, y: any, //z?: null,
     thisValue?: null, args?: null, __proto__: null };
 type DeleteEvent =
   { type: 'deleteProperty',
-    seq: number, p: PropertyKey, x: object, y?: null, z?: null,
+    seq: number, p: PropertyKey, x: object, y?: null, //z?: null,
     thisValue?: null, args?: null, __proto__: null };
 type GetEvent =
   { type: 'get',
-    seq: number, p: PropertyKey, x: object, y: object, z?: null,
+    seq: number, p: PropertyKey, x: object, y?: null, //z?: null,
     thisValue?: null, args?: null, __proto__: null };
 type DefineEvent =
   { type: 'defineProperty',
-    seq: number, p: PropertyKey, x: object, y: PropertyDescriptor, z?: null,
+    seq: number, p: PropertyKey, x: object, y: PropertyDescriptor, //z?: null,
     thisValue?: null, args?: null, __proto__: null };
 type PreventExtensionsEvent =
   { type: 'preventExtensions',
-    seq: number, p?: null, x: object, y?: null, z?: null,
+    seq: number, p?: null, x: object, y?: null, //z?: null,
     thisValue?: null, args?: null, __proto__: null };
 type SetPrototypeOfEvent =
   { type: 'setPrototypeOf',
-    seq: number, p?: null, x: object, y: object | null, z?: null,
+    seq: number, p?: null, x: object, y: object | null, //z?: null,
     thisValue?: null, args?: null, __proto__: null };
-type FunctionEvent =
-  { type: 'function',
-    seq: number, p?: null, x: string, y?: null, z?: null,
-    thisValue: any, args: any[], freeNames: string[], __proto__: null };
 type GetGlobalEvent =
   { type: 'getGlobal',
-    seq: number, p?: null, x?: null, y?: null, z?: null,
+    seq: number, p?: null, x?: null, y?: null, //z?: null,
     thisValue?: null, args?: null, __proto__: null };
+type CodeBindEvent =
+  { type: 'codeBind',
+    seq: number, p?: null, x: any, y?: null, //z?: null,
+    thisValue?: null, args?: object[], __proto__: null };
 
 /** The ways an object can come to exist. */
-type Origin = ApplyEvent | ConstructEvent | FunctionEvent | GetGlobalEvent | GetEvent;
+type Origin = ApplyEvent | ConstructEvent | GetGlobalEvent | GetEvent | CodeBindEvent;
 /** The ways an object can change. */
 type Change = SetEvent | DeleteEvent | GetEvent | DefineEvent | PreventExtensionsEvent | SetPrototypeOfEvent;
 
@@ -101,23 +110,29 @@ type History<T> = {
   changes: Change[], // Accumulates changes.
 };
 
+type indirectProxyTarget = { target: object }
+
 export class ObjectGraph {
   private objToHistory: WeakMap<object, History<object>>;
   private proxyToObj: WeakMap<object, object>;
-  private proxyHandler: ProxyHandler<object>;
+  private proxyHandler: ProxyHandler<indirectProxyTarget>;
   private seq: number;
+  debug: boolean = false;
 
   constructor() {
     const self = this;
     this.objToHistory = new ReliableWeakMap();
     this.proxyToObj = new ReliableWeakMap();
     this.seq = 0;
+
+    // A generic proxy handler that works with all proxies created by getProxy.
+    // We don't directly proxy objects because get traps for readonly properties
+    // require returning the same value, so break proxying.
     this.proxyHandler = {
-      /*
-      getPrototypeOf(target: object): object | null {
+      getPrototypeOf({ target }: indirectProxyTarget): object | null {
+        return refGetPrototypeOf(target);
       },
-      */
-      setPrototypeOf(target: object, v: any): boolean {
+      setPrototypeOf({ target }: indirectProxyTarget, v: any): boolean {
         const history = self.objToHistory.get(target);
         if (!history) { throw new Error(); }
         history.changes.push(
@@ -126,11 +141,10 @@ export class ObjectGraph {
           });
         return refSetPrototypeOf(target, v);
       },
-      /*
-      isExtensible(target: object): boolean {
+      isExtensible({ target }: indirectProxyTarget): boolean {
+        return refIsExtensible(target);
       },
-      */
-      preventExtensions(target: object): boolean {
+      preventExtensions({ target }: indirectProxyTarget): boolean {
         const history = self.objToHistory.get(target);
         if (!history) { throw new Error(); }
         history.changes.push(
@@ -140,23 +154,14 @@ export class ObjectGraph {
           });
         return refPreventExtensions(target);
       },
-      /*
-      getOwnPropertyDescriptor(target: object, p: PropertyKey): PropertyDescriptor | undefined {
+      getOwnPropertyDescriptor({ target }: indirectProxyTarget, p: PropertyKey)
+      : PropertyDescriptor | undefined {
+        return refGetOwnPropertyDescriptor(target, p);
       },
-      */
-      /*
-      has(target: object, p: PropertyKey): boolean {
+      has({ target }: indirectProxyTarget, p: PropertyKey): boolean {
+        return refHas(target, p);
       },
-      */
-      get(target: object, p: PropertyKey, receiver: any): any {
-        let origin = null;
-        if (target === globalObject) {
-          origin = (seq: number):Origin => ({
-            __proto__: null,
-            type: 'get', seq, x: target, p, y: receiver
-          });
-        }
-
+      get({ target }: indirectProxyTarget, p: PropertyKey, receiver: any): any {
         for (let obj = target; obj; obj = getPrototypeOf(obj)) {
           const desc = getOwnPropertyDescriptor(obj, p);
           if (desc) {
@@ -165,28 +170,39 @@ export class ObjectGraph {
               if (!history) { throw new Error(); }
               history.changes.push({
                 __proto__: null,
-                type: 'get', seq: self.seq++, x: target, p, y: receiver
+                type: 'get', seq: self.seq++, x: target, p, // y: receiver
               });
             } else if (refApply(hasOwnProperty, desc, [ 'value' ])) {
-              return self.getProxy(desc.value, origin);
+              const value = desc.value;
+              return self.getProxy(
+                value,
+                (seq: number): Origin => ({
+                  __proto__: null,
+                  type: 'get', seq, x: target, p, // y: receiver
+                }));
             }
             break;
           }
         }
 
-        return self.getProxy(refGet(target, p, receiver), origin);
+        return self.getProxy(
+          refGet(target, p, receiver),
+          (seq: number): Origin => ({
+            __proto__: null,
+            type: 'get', seq, x: target, p, // y: receiver
+          }));
       },
-      set(target: object, p: PropertyKey, value: any, receiver: any): boolean {
+      set({ target }: indirectProxyTarget, p: PropertyKey, value: any): boolean {
         const history = self.objToHistory.get(target);
         if (!history) { throw new Error(); }
         history.changes.push(
           {
             __proto__: null,
-            type: 'set', seq: self.seq++, x: target, p, y: value, z: receiver
+            type: 'set', seq: self.seq++, x: target, p, y: value, // z: receiver
           });
-        return refSet(target, p, value, receiver);
+        return refSet(target, p, value);
       },
-      deleteProperty(target: object, p: PropertyKey): boolean {
+      deleteProperty({ target }: indirectProxyTarget, p: PropertyKey): boolean {
         const history = self.objToHistory.get(target);
         if (!history) { throw new Error(); }
         history.changes.push(
@@ -196,7 +212,7 @@ export class ObjectGraph {
           });
         return refDeleteProperty(target, p);
       },
-      defineProperty(target: object, p: PropertyKey, attributes: PropertyDescriptor): boolean {
+      defineProperty({ target }: indirectProxyTarget, p: PropertyKey, attributes: PropertyDescriptor): boolean {
         const history = self.objToHistory.get(target);
         if (!history) { throw new Error(); }
         history.changes.push(
@@ -206,15 +222,13 @@ export class ObjectGraph {
           });
         return refDefineProperty(target, p, attributes);
       },
-      /*
-      enumerate(target: object): PropertyKey[] {
+      enumerate(/*{ target }: indirectProxyTarget*/): PropertyKey[] {
+        throw new Error('TODO');  // Is enumerate actually a thing?
       },
-      */
-      /*
-      ownKeys(target: object): PropertyKey[] {
+      ownKeys({ target }: indirectProxyTarget): PropertyKey[] {
+        return refOwnKeys(target);
       },
-      */
-      apply(target: object, thisValue: any, argArray: any[]): any {
+      apply({ target }: indirectProxyTarget, thisValue: any, argArray: any[]): any {
         const result = refApply(target as Function, thisValue, argArray);
         // Exceptions are special case wrapped in catch blocks.
         return self.getProxy(result, (seq: number) => ({
@@ -226,15 +240,14 @@ export class ObjectGraph {
           args: [...argArray],
         }));
       },
-      construct(target: object, argArray: any[], newTarget?: any): object {
-        const result = refConstruct(target as Function, argArray, newTarget);
+      construct({ target }: indirectProxyTarget, argArray: any[]/*, newTarget?: any*/): object {
+        const result = refConstruct(target as Function, argArray);
         // Exceptions are special case wrapped in catch blocks.
         return self.getProxy(result, (seq: number) => ({
           __proto__: null,
           type: 'construct',
           seq,
           x: target as new(...args: any[])=>any,
-          y: newTarget,
           args: [...argArray],
         }));
       },
@@ -249,7 +262,8 @@ export class ObjectGraph {
   }
 
   getProxy(x: any, origin?: null | ((seq: number) => Origin)):any {
-    switch (typeof x) {
+    const xtype = typeof x;
+    switch (xtype) {
     case 'string': case 'number': case 'symbol': case 'boolean':
     case 'undefined':
       return x;
@@ -261,15 +275,29 @@ export class ObjectGraph {
       const obj = x as object;
       let history = this.objToHistory.get(obj);
       if (!history) {
+        if (this.debug) {
+          console.log(`creating proxy for ${ obj }`);
+        }
         if (!origin) {
           error(`replayable: origin unavailable`);
           throw new Error('origin unavailable');
         }
-        const proxy = new Proxy(obj, this.proxyHandler);
+
+        // See proxyHandler comments above.
+        const indirectTargetInitial: object =
+            // TODO: Ideally indirectTarget would have [[Apply]] and [[Call]] only when x does.
+            // TODO: Distinguish between function* and lambdas and regular functions.
+            xtype === 'function' ? function () {}
+            : isArray(x) ? []
+            : {};
+        (indirectTargetInitial as indirectProxyTarget).target = obj;
+        const indirectTarget = (indirectTargetInitial as indirectProxyTarget);
+
+        const proxy = new Proxy(indirectTarget, this.proxyHandler);
         history = {
           proxy,
           origin: origin(this.seq++),
-          changes: []
+          changes: [],
         };
         this.objToHistory.set(obj, history);
         this.proxyToObj.set(proxy, obj);
@@ -278,9 +306,79 @@ export class ObjectGraph {
     }
   }
 
+  unproxy<T extends object>(x: T): T {
+    return (this.proxyToObj.get(x) as T) || x;
+  }
+
   /** A proxy for the global object. */
   getGlobalProxy() {
     return this.getProxy(global);
+  }
+
+  /**
+   * Creates a function, class, or lambda value given a functional proxy for source
+   * code, a set of objects representing groups of free bindings in the same scope,
+   * and a source handle that will allow a function equivalent to
+   * builder to be reconstituted.
+   *
+   * For example,
+   *   let f;
+   *   {
+   *     let x = 1;
+   *     f = () => x++;
+   *   }
+   *
+   * is equivalent to
+   *
+   *   let f;
+   *   {
+   *     let frame1 = { x: 1 };
+   *     f = ((f1) => () => f1.x++)(frame1);
+   *   }
+   *
+   * In the second decomposition, frame1 is a stack frame that may be shared
+   * among multiple closures, and may have its own history in the object graph.
+   *
+   * The lambda ((f1) => () => ...) is a builder.
+   *
+   * Then, since builder has no free variables that are not globals,
+   * its source code representation could be serialized as part of an event history
+   * and reconstituted later.
+   *
+   * @param builder returns the declared result bound in the context of stack frames.
+   * @param sourceHandle a value that is sufficient to reconstitute something equivalent
+   *     to builder.
+   *     This is stored with the origin event instead of builder because builder is opaque.
+   *     Object graphs are agnostic to how sourceHandles are represented; the supplier of
+   *     sourceHandles is responsible for supplying ones that are meaningful to eventual
+   *     consumers of the serialized history.
+   * @param stackFrames An array of stack frames from outermost scope to innermost.
+   *     Own properties specify names that can be bound in the context of builder.
+   * @return a proxy over the declared value.
+   */
+  declareFunction(builder: (...args: { [key: string]: any }[]) => Function,
+                  sourceHandle: any,
+                  stackFrames: { [key: string]: any }[]) {
+    const stackFrameProxies: { [key: string]: any }[] = [];
+    for (let i = 0, n = stackFrames.length; i < n; ++i) {
+      stackFrameProxies[i] = this.getProxy(stackFrames[i]);
+    }
+    return this.getProxy(
+      builder(...stackFrameProxies),
+      (seq: number) => ({
+        __proto__: null,
+        seq,
+        type: 'codeBind',
+        x: sourceHandle,
+        args: stackFrameProxies
+      }));
+  }
+
+  /**
+   * Returns the history for the given object.
+   */
+  getHistory<T extends object>(obj: T): (History<T> | null) {
+    return (this.objToHistory.get(obj) as (History<T> | undefined)) || null;
   }
 
   /**
@@ -307,26 +405,26 @@ export class ObjectGraph {
       const lastIndex = unprocessed.length - 1;
       const last = unprocessed[lastIndex];
       --unprocessed.length;
-      if (processed.has(last)) {
+      if (!(this.objToHistory.has(last) || this.proxyToObj.has(last))) {
+        throw new Error(`unproxied ${ last }`);
+      }
+      const obj: object = this.proxyToObj.get(last) || last;
+      if (processed.has(obj)) {
         continue;
       }
-      processed.add(last);
-      const obj = this.proxyToObj.get(last);
-      if (!obj) {
-        continue;
-      }
+      processed.add(obj);
       const history = this.objToHistory.get(obj);
       if (!history) {
         continue;
       }
       const eventsLengthBefore = events.length;
-      events.push(history.origin, ...history.changes);
+      events.push(history.origin, ...history.changes);  // TODO: use builtin push
       const eventsLengthAfter = events.length;
       for (let i = eventsLengthBefore; i < eventsLengthAfter; ++i) {
-        const { x, y, z, thisValue, args } = events[i];
+        const { x, y, /*z,*/ thisValue, args } = events[i];
         maybeEnqueue(x);
         maybeEnqueue(y);
-        maybeEnqueue(z);
+        //maybeEnqueue(z);
         maybeEnqueue(thisValue);
         if (args) {
           for (const arg of args) {
@@ -335,7 +433,7 @@ export class ObjectGraph {
         }
       }
     }
-    events.sort((a, b) => a.seq - b.seq);
+    events.sort((a, b) => a.seq - b.seq);  // TODO: use builtin sort
     return events;
   }
 }
