@@ -113,9 +113,13 @@ type History<T> = {
 type indirectProxyTarget = { target: object }
 
 export class ObjectGraph {
+  /** Maps objects to their history. */
   private objToHistory: WeakMap<object, History<object>>;
+  /** Maps proxies to the objects they proxy. */
   private proxyToObj: WeakMap<object, object>;
+  /** The handler for newly created proxies. */
   private proxyHandler: ProxyHandler<indirectProxyTarget>;
+  /** A counter used to for new events' seq field. */
   private seq: number;
   debug: boolean = false;
 
@@ -230,7 +234,8 @@ export class ObjectGraph {
       },
       apply({ target }: indirectProxyTarget, thisValue: any, argArray: any[]): any {
         const result = refApply(target as Function, thisValue, argArray);
-        // Exceptions are special case wrapped in catch blocks.
+        // Exceptions are special case wrapped in catch blocks so no need to proxy
+        // them as they bubble out.
         return self.getProxy(result, (seq: number) => ({
           __proto__: null,
           type: 'apply',
@@ -242,7 +247,8 @@ export class ObjectGraph {
       },
       construct({ target }: indirectProxyTarget, argArray: any[]/*, newTarget?: any*/): object {
         const result = refConstruct(target as Function, argArray);
-        // Exceptions are special case wrapped in catch blocks.
+        // Exceptions are special case wrapped in catch blocks so no need to proxy
+        // them as they bubble out.
         return self.getProxy(result, (seq: number) => ({
           __proto__: null,
           type: 'construct',
