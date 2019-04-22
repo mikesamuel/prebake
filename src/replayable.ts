@@ -3,6 +3,8 @@
  * code that will recreate the state of the object graph.
  */
 
+import { inspect } from 'util';
+
 //// Capture some state so this module continues to function even if polyfills do odd things
 //// with builtins.
 const globalObject: object =
@@ -27,14 +29,22 @@ const {
 } = Reflect;
 
 const {
-  isArray
+  isArray,
 } = Array;
 
+const {
+  create,
+  defineProperties,
+  getOwnPropertyDescriptor,
+  getOwnPropertyNames,
+  getPrototypeOf,
+  hasOwnProperty,
+} = Object;
+
+const GlobalObject = Object;
+const GlobalArray = Array;
+
 const error = console.error.bind(console);
-
-const { getOwnPropertyDescriptor, getPrototypeOf } = Object;
-const hasOwnProperty = Object.hasOwnProperty;
-
 
 //// Side-step problems with user-code changing builtin prototypes
 class ReliableWeakMap extends WeakMap {}
@@ -49,6 +59,61 @@ for (const key of (Object.getOwnPropertyNames(Set.prototype) as Array<keyof Set<
   }
 }
 
+const originalJSONParse = JSON.parse;
+// JSON.parse is odd because it creates values out of whole cloth.
+function replayableJSONParse(
+  ObjectCtorProxy: new () => Object,
+  ArrayCtorProxy: new () => Array<unknown>,
+  createProxy: (proto: object | null) => Object,
+  requireProxied: (x: object) => void) {
+  return function parse(json: string, reviver?: (key: string, value: any) => any) {
+    const parsed = originalJSONParse(json);
+
+    function internalizeProperty(
+        elementName: string, value: any, descriptorMap: PropertyDescriptorMap) {
+      const proxiedValue = internalize(elementName, value);
+      if (typeof proxiedValue !== 'undefined') {
+        const proxiedDescriptor: PropertyDescriptor = createProxy(null);
+        requireProxied(proxiedDescriptor);
+        proxiedDescriptor.configurable = true;
+        proxiedDescriptor.enumerable = true;
+        proxiedDescriptor.writable = true;
+        proxiedDescriptor.value = proxiedValue;
+        requireProxied(proxiedValue);
+        descriptorMap[elementName] = proxiedDescriptor;
+      }
+    }
+
+    function internalize(name: string, element: any) {
+      if (element && typeof element === 'object') {
+        const descriptorMap = createProxy(null) as PropertyDescriptorMap;
+        requireProxied(descriptorMap);
+
+        let newElement;
+        if (isArray(element)) {
+          newElement = new ArrayCtorProxy();
+          requireProxied(newElement);
+          for (let i = 0, n = element.length; i < n; ++i) {
+            internalizeProperty('' + i, element[i], descriptorMap);
+          }
+        } else {
+          newElement = new ObjectCtorProxy();
+          requireProxied(newElement);
+          for (let elementName of getOwnPropertyNames(element)) {
+            internalizeProperty(elementName, element[elementName], descriptorMap);
+          }
+        }
+
+        defineProperties(newElement, descriptorMap);
+        element = newElement;
+      }
+
+      return typeof reviver === 'function'
+          ? reviver(name, element) : element;
+    }
+    return internalize("", parsed);
+  };
+}
 
 // We break an object's history into a sequence of events.
 // seq shows where that event occurs in a global ordering.
@@ -58,46 +123,55 @@ for (const key of (Object.getOwnPropertyNames(Set.prototype) as Array<keyof Set<
 type ApplyEvent =
   { type: 'apply',
     seq: number, p?: null, x: Function, y?: null, //z?: null,
-    thisValue: any, args: any[], __proto__: null };
+    thisValue: any, args: any[], desc?: null, __proto__: null };
 type ConstructEvent =
   { type: 'construct',
     seq: number, p?: null, x: new(...args:any[])=>any, y?: null, //z?: null,
-    thisValue?: null, args: any[], __proto__: null };
+    thisValue?: null, args: any[], desc?: null, __proto__: null };
 type SetEvent =
   { type: 'set',
     seq: number, p: PropertyKey, x: object, y: any, //z?: null,
-    thisValue?: null, args?: null, __proto__: null };
+    thisValue?: null, args?: null, desc?: null, __proto__: null };
 type DeleteEvent =
   { type: 'deleteProperty',
     seq: number, p: PropertyKey, x: object, y?: null, //z?: null,
-    thisValue?: null, args?: null, __proto__: null };
+    thisValue?: null, args?: null, desc?: null, __proto__: null };
 type GetEvent =
   { type: 'get',
     seq: number, p: PropertyKey, x: object, y?: null, //z?: null,
-    thisValue?: null, args?: null, __proto__: null };
+    thisValue?: null, args?: null, desc?: null, __proto__: null };
 type DefineEvent =
   { type: 'defineProperty',
-    seq: number, p: PropertyKey, x: object, y: PropertyDescriptor, //z?: null,
-    thisValue?: null, args?: null, __proto__: null };
+    seq: number, p: PropertyKey, x: object, y?: null, //z?: null,
+    thisValue?: null, args?: null, desc: PropertyDescriptor, __proto__: null };
 type PreventExtensionsEvent =
   { type: 'preventExtensions',
     seq: number, p?: null, x: object, y?: null, //z?: null,
-    thisValue?: null, args?: null, __proto__: null };
+    thisValue?: null, args?: null, desc?: null, __proto__: null };
 type SetPrototypeOfEvent =
   { type: 'setPrototypeOf',
     seq: number, p?: null, x: object, y: object | null, //z?: null,
-    thisValue?: null, args?: null, __proto__: null };
+    thisValue?: null, args?: null, desc?: null, __proto__: null };
 type GetGlobalEvent =
   { type: 'getGlobal',
     seq: number, p?: null, x?: null, y?: null, //z?: null,
-    thisValue?: null, args?: null, __proto__: null };
+    thisValue?: null, args?: null, desc?: null, __proto__: null };
 type CodeBindEvent =
   { type: 'codeBind',
     seq: number, p?: null, x: any, y?: null, //z?: null,
-    thisValue?: null, args?: object[], __proto__: null };
+    thisValue?: null, args?: object[], desc?: null, __proto__: null };
+type GetPrototypeOfEvent =
+  { type: 'getPrototypeOf',
+    seq: number, p?: null, x: any, y?: null, //z?: null,
+    thisValue?: null, args?: null, desc?: null, __proto__: null };
+type GetOwnPropertyDescriptorEvent =
+  { type: 'getOwnPropertyDescriptor',
+    seq: number, p: PropertyKey, x: any, y?: null, //z?: null,
+    thisValue?: null, args?: null, desc?: null, __proto__: null };
 
 /** The ways an object can come to exist. */
-type Origin = ApplyEvent | ConstructEvent | GetGlobalEvent | GetEvent | CodeBindEvent;
+type Origin = ApplyEvent | ConstructEvent | GetGlobalEvent | GetEvent | CodeBindEvent
+            | GetPrototypeOfEvent | GetOwnPropertyDescriptorEvent;
 /** The ways an object can change. */
 type Change = SetEvent | DeleteEvent | GetEvent | DefineEvent | PreventExtensionsEvent | SetPrototypeOfEvent;
 
@@ -134,7 +208,11 @@ export class ObjectGraph {
     // require returning the same value, so break proxying.
     this.proxyHandler = {
       getPrototypeOf({ target }: indirectProxyTarget): object | null {
-        return refGetPrototypeOf(target);
+        return self.getProxy_(
+          refGetPrototypeOf(target),
+          (seq) => ({
+            __proto__: null, type: 'getPrototypeOf', seq, x: target,
+          }));
       },
       setPrototypeOf({ target }: indirectProxyTarget, v: any): boolean {
         const history = self.objToHistory.get(target);
@@ -160,7 +238,11 @@ export class ObjectGraph {
       },
       getOwnPropertyDescriptor({ target }: indirectProxyTarget, p: PropertyKey)
       : PropertyDescriptor | undefined {
-        return refGetOwnPropertyDescriptor(target, p);
+        return self.getProxy_(
+          refGetOwnPropertyDescriptor(target, p),
+          (seq) => ({
+            __proto__: null, type: 'getOwnPropertyDescriptor', seq, x: target, p
+          }));
       },
       has({ target }: indirectProxyTarget, p: PropertyKey): boolean {
         return refHas(target, p);
@@ -216,13 +298,14 @@ export class ObjectGraph {
           });
         return refDeleteProperty(target, p);
       },
-      defineProperty({ target }: indirectProxyTarget, p: PropertyKey, attributes: PropertyDescriptor): boolean {
+      defineProperty({ target }: indirectProxyTarget, p: PropertyKey,
+                     attributes: PropertyDescriptor): boolean {
         const history = self.objToHistory.get(target);
         if (!history) { throw new Error(); }
         history.changes.push(
           {
             __proto__: null,
-            type: 'defineProperty', seq: self.seq++, p, x: target, y: attributes
+            type: 'defineProperty', seq: self.seq++, p, x: target, desc: attributes
           });
         return refDefineProperty(target, p, attributes);
       },
@@ -265,9 +348,40 @@ export class ObjectGraph {
     globalProxy.Object;
     globalProxy.Array;
     globalProxy.Function;
+    globalProxy.Object.create;
+
+    // JSON.parse is odd because it creates objects using non-proxyable internals.
+    const jsonProxy = globalProxy.JSON;
+    this.getProxy_(
+      JSON.parse /* intentionally unproxied */,
+      (seq: number, internalTarget: { target: object }): GetEvent => {
+        // Sneakily replace the function that is actually called.
+        internalTarget.target = replayableJSONParse(
+          this.getProxy(GlobalObject),
+          this.getProxy(GlobalArray),
+          this.getProxy(create),
+          (x: object) => {
+            if (x && (typeof x === 'object' || typeof x === 'function')) {
+              if (!this.proxyToObj.has(x)) {
+                throw new Error('Unproxied');
+              }
+            }
+          });
+        return {
+          __proto__: null,
+          type: 'get', seq, x: jsonProxy, p: 'parse',
+        };
+      });
   }
 
   getProxy(x: any, origin?: null | ((seq: number) => Origin)):any {
+    return this.getProxy_(x, origin);
+  }
+
+  private getProxy_(
+    x: any,
+    origin?: null | ((seq: number, internalTarget: { target: object }) => Origin)): any {
+
     const xtype = typeof x;
     switch (xtype) {
     case 'string': case 'number': case 'symbol': case 'boolean':
@@ -293,6 +407,7 @@ export class ObjectGraph {
         const indirectTargetInitial: object =
             // TODO: Ideally indirectTarget would have [[Apply]] and [[Call]] only when x does.
             // TODO: Distinguish between function* and lambdas and regular functions.
+            // TODO: Distinguish between async and non-async.
             xtype === 'function' ? function () {}
             : isArray(x) ? []
             : {};
@@ -302,7 +417,7 @@ export class ObjectGraph {
         const proxy = new Proxy(indirectTarget, this.proxyHandler);
         history = {
           proxy,
-          origin: origin(this.seq++),
+          origin: origin(this.seq++, indirectTarget),
           changes: [],
         };
         this.objToHistory.set(obj, history);
@@ -412,6 +527,11 @@ export class ObjectGraph {
       const last = unprocessed[lastIndex];
       --unprocessed.length;
       if (!(this.objToHistory.has(last) || this.proxyToObj.has(last))) {
+        try {
+          console.log(inspect(last));
+        } catch (ex) {
+          console.log('not JSONable');
+        }
         throw new Error(`unproxied ${ last }`);
       }
       const obj: object = this.proxyToObj.get(last) || last;
@@ -427,14 +547,26 @@ export class ObjectGraph {
       events.push(history.origin, ...history.changes);  // TODO: use builtin push
       const eventsLengthAfter = events.length;
       for (let i = eventsLengthBefore; i < eventsLengthAfter; ++i) {
-        const { x, y, /*z,*/ thisValue, args } = events[i];
+        const { x, y, /*z,*/ thisValue, args, desc } = events[i];
         maybeEnqueue(x);
         maybeEnqueue(y);
         //maybeEnqueue(z);
         maybeEnqueue(thisValue);
+
         if (args) {
           for (const arg of args) {
             maybeEnqueue(arg);
+          }
+        }
+
+        if (desc) {
+          // Record is copied between property creation and proxy trap
+          // TODO: Can we solve this in the proxy handler?
+          if ('value' in desc) {
+            maybeEnqueue(desc.value);
+          } else {
+            maybeEnqueue(desc.get);
+            maybeEnqueue(desc.set);
           }
         }
       }

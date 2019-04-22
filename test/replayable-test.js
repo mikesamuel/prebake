@@ -65,6 +65,21 @@ function makeHistoryComparable(og, startPoints) {
           : el;
       }
       return vals;
+    } else if (key === 'desc') {
+      if ('value' in val) {
+        const value = val.value;
+        if (value && typeof value === 'object') {
+          val.value = fromPool(value);
+        }
+      } else {
+        if ('get' in val) {
+          val.get = fromPool(val.get);
+        }
+        if ('set' in val) {
+          val.set = fromPool(val.set);
+        }
+      }
+      return val;
     } else if (+key === +key || otherKeys.has(key)) {
       return val;
     } else {
@@ -284,6 +299,72 @@ describe('replayable', () => {
     expect(typeof fn).to.equal('function');
     expect(pool[3]).to.equal(fn);
   });
+  it('get a property descriptor', () => {
+    const og = new ObjectGraph();
+    const globalProxy = og.getProxy(global);
+    const reflectProxy = globalProxy.Reflect;
+
+    const o = new globalProxy.Object();
+    o.x = o;
+
+    let descriptor = reflectProxy.getOwnPropertyDescriptor(o, 'x');
+
+    const { history, pool } = makeHistoryComparable(og, [descriptor]);
+    expect(history).to.deep.equal([
+      {
+        type: 'getGlobal',
+        origin: '#0#',
+      },
+      {
+        type: 'get',
+        x: '#0#',
+        p: 'Object',
+        origin: '#1#',  // #1# = global.Object
+      },
+      {
+        type: 'get',
+        x: '#0#',
+        p: 'Reflect',
+        origin: '#3#',  // #3# = global.Reflect
+      },
+      {
+        type: 'construct',
+        x: '#1#',
+        args: [],
+        origin: '#2#',  // #2# = new Object()
+      },
+      {
+        type: 'set',
+        x: '#2#',
+        p: 'x',
+        y: '#2#',
+        // #2#.x = #2#
+      },
+      {
+        type: 'get',
+        x: '#3#',
+        p: 'getOwnPropertyDescriptor',
+        origin: '#4#',  // #4# = global.Reflect.getOwnPropertyDescriptor
+      },
+      {
+        type: 'apply',
+        x: '#4#',
+        thisValue: '#3#',
+        args: [
+          '#2#',
+          'x',
+        ],
+        origin: '#5#',  // #5# = Reflect.getOwnPropertyDescriptor(#2#, 'x')
+      },
+    ]);
+    expect(pool.length).to.equal(6);
+    expect(pool[0]).to.equal(global);
+    expect(pool[1]).to.equal(Object);
+    expect(pool[2]).to.equal(og.unproxy(o));
+    expect(pool[3]).to.equal(Reflect);
+    expect(pool[4]).to.equal(Reflect.getOwnPropertyDescriptor);
+    expect(pool[5]).to.equal(og.unproxy(descriptor));
+  });
   it('create via builtin apply', () => {
     // Objects created by parsing JSON.
     const jsonStr = '{ "x": { "y": [ 123, {} ] } }';
@@ -305,42 +386,178 @@ describe('replayable', () => {
       {
         type: 'get',
         x: '#0#',
-        p: 'JSON',
+        p: 'Object',
         origin: '#1#',
       },
       {
         type: 'get',
-        x: '#1#',
-        p: 'parse',
+        x: '#0#',
+        p: 'Array',
         origin: '#2#',
       },
       {
-        type: 'apply',
+        // Create an object
+        type: 'construct',
+        x: '#1#',
+        args: [],
+        origin: '#5#',
+      },
+      {
+        // Create an array
+        type: 'construct',
         x: '#2#',
-        thisValue: '#1#',
-        args: [ jsonStr ],
+        args: [],
         origin: '#3#',
       },
       {
-        type: 'get',
-        x: '#3#',
-        p: 'x',
+        // Create another object
+        type: 'construct',
+        x: '#1#',
+        args: [],
         origin: '#4#',
       },
       {
-        type: 'get',
-        x: '#4#',
+        // Assign element 0 of the array
+        type: 'defineProperty',
+        x: '#3#',
+        p: '0',
+        desc: {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value: 123,
+        },
+      },
+      {
+        // Assign element 1 of the array to the inner object
+        type: 'defineProperty',
+        x: '#3#',
+        p: '1',
+        desc: {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value: '#4#',
+        },
+      },
+      {
+        // Put the array in the outer object
+        type: 'defineProperty',
+        x: '#5#',
         p: 'y',
-        origin: '#5#',
+        desc: {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value: '#3#',
+        },
       },
     ]);
     expect(pool.length).to.equal(6);
     expect(pool[0]).to.equal(global);
-    expect(pool[1]).to.equal(JSON);
-    expect(pool[2]).to.equal(JSON.parse);
-    expect(pool[3]).to.deep.equal({ "x": pool[4] });
-    expect(pool[4]).to.deep.equal({ "y": [ 123, {} ] });
-    expect(pool[5]).to.deep.equal([ 123, {} ]);
+    expect(pool[1]).to.equal(Object);
+    expect(pool[2]).to.equal(Array);
+    expect(pool[3]).to.deep.equal([ 123, {} ]);
+    expect(pool[4]).to.equal(og.unproxy(pool[3][1]));
+    expect(pool[5]).to.deep.equal({ "y": pool[3] });
+  });
+  it('JSON.parse with reviver', () => {
+    // A JSON reviver can create values which then become part of the output
+    // without there being an explicit record of inner object creation or
+    // property assignments.
+
+    const og = new ObjectGraph();
+    const globalProxy = og.getProxy(global);
+
+    const jsonProxy = globalProxy.JSON;
+
+    const jsonToParse = '[ { "type": "Date", "millis": 946684800000 } ]';
+
+    // A reviver that turns { type: 'Date', millis } into builtin Date values
+    const reviverBuilder = (stackFrame) => {
+      return function (key, val) {
+        if (val && typeof val === 'object' && !stackFrame.Array.isArray(val)) {
+          if (val.type === 'Date' && typeof val.millis === 'number') {
+            return new stackFrame.Date(val.millis);
+          }
+        }
+        return val;
+      };
+    };
+
+    const reviverCode = `
+      function (key, val) {
+        if (val && typeof val === 'object' && !Array.isArray(val)) {
+          if (val.type === 'Date' && typeof val.millis === 'number') {
+            return new Date(val.millis);
+          }
+        }
+        return val;
+      }`;
+
+    const reviverProxy = og.declareFunction(
+      reviverBuilder,
+      reviverCode,
+      [ globalProxy ]);
+
+    const arrayOfDatesProxy = jsonProxy.parse(jsonToParse, reviverProxy);
+    const revivedDateProxy = arrayOfDatesProxy[0];
+    expect(Array.isArray(arrayOfDatesProxy) && arrayOfDatesProxy.length === 1);
+    expect(revivedDateProxy instanceof Date);
+
+    const { history, pool } = makeHistoryComparable(
+      og, [revivedDateProxy, arrayOfDatesProxy]);
+    expect(history).to.deep.equal([
+      {
+        type: 'getGlobal',
+        origin: '#0#',
+      },
+      {
+        type: 'get',
+        x: '#0#',
+        p: 'Array',
+        origin: '#1#',
+      },
+      {
+        type: 'construct',
+        x: '#1#',
+        args: [],
+        origin: '#3#',
+        // #3# = new Array()
+      },
+      {
+        type: 'get',
+        x: '#0#',
+        p: 'Date',
+        origin: '#2#',
+      },
+      {
+        type: 'construct',
+        x: '#2#',
+        args: [ 946684800000 ],
+        origin: '#4#',
+        // #4# = new Date(946684800000)
+      },
+      {
+        type: 'defineProperty',
+        x: '#3#',
+        p: '0',
+        desc: {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value: '#4#',
+        },
+        // #3#[0] = #4#
+      }
+    ]);
+    expect(pool.length).to.equal(5);
+    expect(pool[0]).to.equal(global);
+    expect(pool[1]).to.equal(Array);
+    expect(pool[2]).to.equal(Date);
+    expect(pool[3]).to.equal(og.unproxy(arrayOfDatesProxy));
+    expect(pool[4] instanceof Date).to.equal(true);
+    expect(+pool[4]).to.equal(946684800000);
   });
 });
 
