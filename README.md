@@ -142,7 +142,7 @@ better alternatives.  Adoption will be slow unless those are handled transparent
 For example:
 
 *  [lodash](https://github.com/lodash/lodash/blob/c541e4ccdc22413eed96572acdce3b0b5fe0cb61/.internal/root.js#L7)
-   (20.7 downloads/week) and
+   (20.7M downloads/week) and
    [core-js](https://github.com/zloirock/core-js/blob/8a36f326ec636ebe8789dbbb8b8006d527d9882a/packages/core-js/internals/global.js#L5)
    (17.3M downloads/week) uses `Function('return this')()` to get a handle to the global object.
 *  [depd](https://github.com/dougwilson/nodejs-depd/blob/6d59c85d093092e65ec77033576417d743079fa0/index.js#L413-L433)
