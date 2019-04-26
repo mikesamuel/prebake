@@ -9,7 +9,7 @@ Explains how the parts of the [prebakery](#prebakery) work together.
 *   <a name="prebakery"> *Prebakery </a> : Given [IDs][module id] of JavaScript sources,
     produces equivalent JS that does not use [moot][] declarations and that uses as
     few [eager][] declarations as possible.
-    A prebakery takes some [initial module ids][] and does the following:
+    A prebakery takes some [initial module id][]s and does the following:
     1.  Uses a [gatherer][] to collect JS [module source][]s.
     1.  Uses a [rewriter][] to figure out how to run some of that code [early][].
         (This may involve circling back to the [gatherer][] if early code dynamically loads ungathered modules.)
@@ -58,7 +58,7 @@ Explains how the parts of the [prebakery](#prebakery) work together.
         clearly marked avoids overly-tight-coupling between [rewriter][] and [reknitter][].
     *   [object histories][] from the [historian][] that can be turned into generated code that
         rebuilds object values 
-    *   a [variable digest][] for each module from the [dedicates js realm][] that relates
+    *   a [variable digest][] for each module from the [dedicated js realm][] that relates
         the result of a top-level `const x = foo();` to the AST node for the `const x` declaration
         in the [swiss module][].
     The reknitter emits a [module set][] which the [prebakery][] may repackage based on configuration
@@ -110,3 +110,4 @@ Explains how the parts of the [prebakery](#prebakery) work together.
 [object histories]: #object-history
 [object history]: #object-history
 [variable digest]: #variable-digest
+[initial module id]: #initial-module-id
