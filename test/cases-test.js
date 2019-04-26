@@ -6,7 +6,8 @@ const { URL } = require('url');
 const { expect } = require('chai');
 const { describe, it } = require('mocha');
 
-const { Prebakery, fileSystemFetcher } = require('../lib/prebake.js');
+const { Prebakery } = require('../lib/prebake.js');
+const { fileSystemFetcher } = require('../lib/src/fetcher.js');
 
 describe('cases', () => {
   const caseRoot = path.join(__dirname, 'cases');
