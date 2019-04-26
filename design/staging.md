@@ -28,7 +28,7 @@ Explains how the parts of the [prebakery](#prebakery) work together.
     Any fetcher operation may return the special value DOES_NOT_UNDERSTAND to indicate that the fetcher does
     not understand the [module id][] or [module glob][].  This is meant to allow chaining of fetchers.
 *   <a name="cassandra"> *Cassandra* </a> : Cassandra is [second party code][] responsible for routing
-    error messages to [third party systems][] which may ignore them at their own peril.
+    error messages to [third party system][]s which may ignore them at their own peril.
 *   <a name="rewriter"> *Rewriter* </a> : The rewriter takes the [module source][] of each module
     and instruments it so that it
     *   contains only declarations and code blocks needed to evaluate [early][] code.
