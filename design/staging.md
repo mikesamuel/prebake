@@ -63,6 +63,22 @@ Explains how the parts of the [prebakery](#prebakery) work together.
         in the [swiss module][].
     The reknitter emits a [module set][] which the [prebakery][] may repackage based on configuration
     options as either one or multiple JS files.
+*   <a name="dedicated-js-realm"> *Dedicated JS Realm* : A [realm][] is a separable
+    JavaScript execution environment with its own global object and version of builtins like `Object`.
+    Each prebakery run creates a dedicated JS realm to run the rewritten module set.
+    There is a 1:1:1 correspondance between module sets, dedicated JS realms, and historians.
+*   <a name="early"> *Early* : early code is code that may run during prebaking.
+    The [rewriter][] is responsible for separating early code from normal code.
+    It decides which code is early based on some rules of thumb including:
+    *   Calls to `Function()` and `eval()`, `require()`, `import()` should run early
+        so that the module set contains the whole program.
+    Declarations may be declared as early via annotations:
+    *   `/* @prebake.moot */` indicates a <a name="moot"> *moot* </a> declaration.
+        A moot declaration is one that the program should not need to function by the time
+        [untrusted input][] could reach it.
+    *   `/* @prebake.eager */` indicates an <a name="eager"> *eager* </a> declaration.
+        An eagerl declaration is one that should run early where possible, but may not in all cases.
+    This annotation suntax may be deprecated in favor of [decorator][]s.
 
 *   <a name="module-metadata"> *Module metadata* : Metadata about a [module][] including
     *   any [source map][]
@@ -80,20 +96,22 @@ Explains how the parts of the [prebakery](#prebakery) work together.
 [gatherer]: #gatherer
 [prebakery]: #prebakery
 [fetcher]: #fetcher
+[cassandra]: #cassandra
 [rewriter]: #rewriter
 [oven]: #oven
 [historian]: #historian
+[dedicated js realm]: #dedicated-js-realm
 [runtime stubs]: #runtime-stubs
+[reknitter]: #reknitter
 [second party code]: #second-party-code
 [third party system]: #third-party-system
 [module metadata]: #module-metadata
-[cassandra]: #cassandra
-
-[dedicated js realm]: #dedicated-js-realm
-[reknitter]: #reknitter
+[realm]: https://tc39.github.io/ecma262/#sec-code-realms
 [eager]: #eager
 [moot]: #moot
 [early]: #early
+[decorator]: https://github.com/tc39/proposal-decorators
+
 [module]: #module
 [module id]: #module-id
 [module glob]: #module-glob
@@ -111,3 +129,4 @@ Explains how the parts of the [prebakery](#prebakery) work together.
 [object history]: #object-history
 [variable digest]: #variable-digest
 [initial module id]: #initial-module-id
+[untrusted input]: #untrusted-input
