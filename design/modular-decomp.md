@@ -6,7 +6,7 @@ How the parts of the [prebakery](#prebakery) work together.
 
 ## Glossary
 
-*   <a name="prebakery"> *Prebakery </a> : Given [IDs][module id] of JavaScript sources,
+*   <a name="prebakery"> *Prebakery* </a> : Given [IDs][module id] of JavaScript sources,
     produces equivalent JS that does not use [moot][] declarations and that uses as
     few [eager][] declarations as possible.
     A prebakery takes some [initial module id][]s and does the following:
@@ -23,15 +23,20 @@ How the parts of the [prebakery](#prebakery) work together.
 *   <a name="fetcher"> *Fetcher* </a> : [second party code][] that abstracts away the file system
     and is the main interoperability point for [third party system][]s like build systems and IDEs.
     A fetcher may be asked to
-    *   canonicalize([module id][], [base][]) returns one that can be compared to tell if two
-        [module id]s refer to the same module.
-    *   list([module glob][], [base][]) returns a list of [module id][]s.
+    *   canonicalize([module id][], [base][], next) returns one that can be compared to tell if two
+        [module id][]s refer to the same module.
+    *   list([module glob][], [base][], next) returns a list of [module id][]s.
         For example given the glob `foo/*.js`, it may return all JavaScript files
         in `foo` relative to base.
-    *   fetch([module id][], [base][]) returns [module source][] and [module metadata][] including
+    *   fetch([module id][], [base][], next) returns [module source][] and [module metadata][]
+
     Any fetcher operation may return the special value DOES_NOT_UNDERSTAND to indicate that the
-    fetcher does not understand the [module id][] or [module glob][].  This is meant to allow
+    fetcher does not understand the [module id][] or [module glob][].  This allows easy
     chaining of fetchers.
+
+    A fetcher may also explicitly delegate to the `next` fetcher and reinterpret its results.
+    This allows [code generation][] by a fetcher that lets others get the content, examines the
+    canonical [module id][]'s extension, and then translates to JavaScript.
 *   <a name="cassandra"> *Cassandra* </a> : Cassandra is [second party code][] responsible for
     routing error messages to [third party system][]s which may ignore them at their own peril.
 *   <a name="rewriter"> *Rewriter* </a> : The rewriter takes the [module source][] of each module
@@ -68,11 +73,11 @@ How the parts of the [prebakery](#prebakery) work together.
         in the [swiss source][].
     The reknitter emits a [module set][] which the [prebakery][] may repackage based on configuration
     options as either one or multiple JS files.
-*   <a name="dedicated-js-realm"> *Dedicated JS Realm* : A [realm][] is a separable JavaScript
+*   <a name="dedicated-js-realm"> *Dedicated JS Realm* </a> : A [realm][] is a separable JavaScript
     execution environment with its own global object and version of builtins like `Object`.
     Each prebakery run creates a dedicated JS realm to run the rewritten module set.
     There is a 1:1:1 correspondance between module sets, dedicated JS realms, and historians.
-*   <a name="early"> *Early* : early code is code that may run during prebaking.
+*   <a name="early"> *Early* </a> : early code is code that may run during prebaking.
     The [rewriter][] is responsible for separating early code from normal code.
     It decides which code is early based on some rules of thumb including:
     *   Calls to `Function()` and `eval()`, `require()`, `import()` should run early
@@ -84,40 +89,41 @@ How the parts of the [prebakery](#prebakery) work together.
     *   `/* @prebake.eager */` indicates an <a name="eager"> *eager* </a> declaration.
         An eagerl declaration is one that should run early where possible, but may not in all cases.
     This annotation suntax may be deprecated in favor of [decorator][]s.
-*   <a name="module"> *Module* : A module for the purposes of this design is a source file
+*   <a name="module"> *Module* </a> : A module for the purposes of this design is a source file
     identified by a canonical (see [fetcher][]) [module id][].
-*   <a name="module-id"> *Module id* : Identifies a module and provides enough context
+*   <a name="module-id"> *Module id* </a> : Identifies a module and provides enough context
     for the [fetcher][] to retrieve [module source][] and [module metadata][].
-    It is a goal to support both ES6 `import` and CommonJS `require`, so a module id is
-    represented as a URL.  Calls to `require(...)` will produce absolute `file:` URLs
-    and uses of ES6 `import` will resolve the string relative to the importing module's
-    `import.meta.url`.
-*   <a name="module-glob"> *Module glob* : A .[gitignore][] style glob pattern that can be
-    used, via [extension APIs][] to scan a local directory for all [module id][]s with
-    something in common.  This is meant to enable [code generation][].
-*   <a name="module-metadata"> *Module metadata* : Metadata about a [module][] including
+    It is a goal to support both ES6 `import` and CommonJS `require`, so each module id is
+    a URL.  Calls to `require(...)` will produce absolute `file:` URLs and uses of ES6 `import`
+    will resolve the string relative to the importing module's `import.meta.url`.
+*   <a name="module-glob"> *Module glob* </a> : A .[gitignore][] style glob pattern that works with
+    [extension APIs][] to enable scaninglocal directory for all [module id][]s with
+    something in common.  This eases bulk [code generation][].
+*   <a name="module-metadata"> *Module metadata* </a> : Metadata about a [module][] including
     *   any [source map][]
     *   any additional [import map][]s assumed by imports.
     *   any content mime-type possibly including a specification year, e.g. ECMA-262 2019
     *   the [base][] URL
     The [fetcher][] may supply additional metadata fields which will make it through to the output
     unchanged.
-*   <a name="module-set"> *Module set* : A set of [module][]s that are [prebaked][prebakery]
+*   <a name="module-set"> *Module set* </a> : A set of [module][]s that are [prebaked][prebakery]
     together.
-*   <a name="module-source"> *Module source* : The source code of a module whether as a string
+*   <a name="module-source"> *Module source* </a> : The source code of a module whether as a string
     or an AST.
     There are several kinds of source in play:
-    *   A fetched source as delivered by a [fetcher][].
-    *   A rewritten source as produced by a [rewriter][] from fetched source.
+    *   A <a name="fetched-source"> fetched source as </a> delivered by a [fetcher][].
+    *   A <a name="rewritten-source"> rewritten source </a> as produced by a [rewriter][] from
+        fetched source.
     *   A swiss source as produced by a [rewriter][] for a [reknitter][].
-    *   An output source as produced by a [reknitter][] from a [swiss source][].
+    *   An <a name="output-source"> output source </a> as produced by a [reknitter][] from a
+        [swiss source][].
 *   <a name="second-party-code"> *Second party code* </a> : JavaScript or TypeScript code that plugs
     into the prebakery to customize behavior.  This is "second party" because it may be supplied by
     tools developers or users.
 *   <a name="third-party-systems"> *Third party systems* </a> : Systems that interoperate with the
     prebakery but which are not necessarily written in JS or which cannot run in the same address
     space.  For example, IDEs, build systems like Bazel and Gulp, Github, etc.
-*   <a name="extension-apis"> *Extension APIs* : APIs that are only available to code running
+*   <a name="extension-apis"> *Extension APIs* </a> : APIs that are only available to code running
     [early][].  They include
     *    `Prebakery.listModules(glob, base)` : calls out to the [fetcher][] to enumerate module ids
          of modules matching the given [module glob][].
@@ -125,35 +131,71 @@ How the parts of the [prebakery](#prebakery) work together.
          to the [module set][].
     *    `new Module(moduleSource, moduleMetadata)` : creates a [module][] and adds it to the
          [module set][].  The supplied [module metadata][] may include a [source map][].
-         Returns a value that may be used with the `import()` operator.
+         Returns a valid input to the `import()` operator.
          The return value may be a `string`, but could change to be a [TrustedScriptURL][].
-*   <a name="load-order"> *Load order* : The order in which modules were loaded by the [oven][]
+*   <a name="load-order"> *Load order* </a> : The order in which the [oven][] loaded modules
     which is the same as the order that modules will be concatenated if a single output is needed.
-*   <a name="base"> *Base* : The base URL of the [module][] often used to resolve import specifiers
-    to URLs.  This may differ from its canonical (see [fetcher][]) [module id][] if, e.g. resolving
-    the canonical [module id][] required following symlinks or HTTP redirects.
-*   <a name="direct-eval"> *Direct eval* : A use of JavaScript `eval` that is "direct" (has access
-    to the scope in which it lexically appears) per the note after [Ecma262 12.3.4.1][].
-*   <a name="indirect-eval"> *Indirect eval* : A use of JavaScript `eval` that is not a
+*   <a name="base"> *Base* </a> : The base URL of the [module][] often used to resolve import
+    specifiers to URLs.  This may differ from its canonical (see [fetcher][]) [module id][] if,
+    e.g. resolving the canonical [module id][] required following symlinks or HTTP redirects.
+*   <a name="direct-eval"> *Direct eval* </a> : A use of JavaScript `eval` that has access to the
+    scope in which it lexically appears per the note after [Ecma262 12.3.4.1][].
+*   <a name="indirect-eval"> *Indirect eval* </a> : A use of JavaScript `eval` that is not a
     [direct eval][] so which only has access to the global scope.
-*   <a name="callsite"> *Call site* : An AST in a [module source][] that corresponds to a call
+*   <a name="callsite"> *Call site* </a> : An AST in a [module source][] that corresponds to a call
     of a statically identifiable operator like `eval` or `import` that the [rewriter][] needs
     to let the [reknitter][] replace with some dynamically computed content.
-*   <a name="swiss-source"> *Swiss source* : A [module source][] with holes that the [reknitter][]
-    will fill based on dynamic computations performed by [early][] code running in the [oven][].
-*   <a name="object-history"> *Object history* : A series of events that describe how a JavaScript
-    [`Object`](https://tc39.github.io/ecma262/#sec-object-type) came to have its current state.
+*   <a name="swiss-source"> *Swiss source* </a> : A [module source][] with holes that the
+    [reknitter][] will fill based on dynamic computations performed by [early][] code running
+    in the [oven][].
+*   <a name="object-history"> *Object history* </a> : A series of events that describe how a
+    JavaScript [`Object`](https://tc39.github.io/ecma262/#sec-object-type) came to have its current
+    state.
     Events are things like
     1.  created via the builtin %Object% constructor
     1.  own property with key `"x"` set to value `123`.
-    Events for all objects managed by a [historian][] are totally ordered
-    so that the histories of multiple objects may be merged into one replayable script.
+    Events for all objects managed by a [historian][] are totally ordered so it can merge the
+    histories of multiple objects into one replayable script.
+*   <a name="variable-digest"> *Variable digest* </a> : For a given [module][], the state of each
+    top-level variable that is not [moot][] and which [early][] code might have initialized.
 
+    This allows the reknitter to figure out which [object histories][] it needs to preserve
+    and how to use them to initialize variables needed by non-early code in [output source][]s.
 
-[variable digest]: #variable-digest
-[initial module id]: #initial-module-id
-[untrusted input]: #untrusted-input
-[code generation]: #code-generation
+    For example, a [rewritten source][] might look like:
+    ```js
+    /* @prebake.eager */
+    function f() { ... }
+
+    const x = f();
+
+    // BEGIN Generated code that exports variable digest
+    prebakery_nonC3.exportVariableDigest(
+        'current module id',
+        {
+          // Getter delays error for uninitialized variables which reknitter can trap.
+          get x() { return x; }
+        });
+    // END
+    ```
+*   <a name="initial-module-id"> *Initial module id* </a> : A [module id][] of module required
+    by the program supplied as an input to the [prebakery][] run.
+    Any convenience APIs that take source code as input will use a [fetcher][] that
+    also returns a generated [initial module id][] given a [module source][].
+*   <a name="untrusted-input"> *Untrusted input* </a> : A JavaScript value from a source that
+    is not trusted to author code in any [module][].
+    For example, a string received over the network from an attacker that must not reach
+    `eval(...)`.
+    It is a goal of the prebakery to allow a high level of dynamism by [early][] code, and
+    to produce programs that can run with dynamic operatos locked down.
+    This assumes that untrusted inputs do not reach [early][] code.
+*   <a name="code-generation"> *Code generation* </a> : The act of producing a JavaScript
+    [module source][] from a non-JavaScript input.
+
+    Code generators may fetch code and use `new Module(...)` (see [extension APIs][]) to
+    create a module, but a [fetcher][]s can also intercept a [module id][] with a specific
+    extension, delegate content loading to the rest of the fetcher chain, and then return
+    converted content.
 
 [gatherer]: #gatherer
 [prebakery]: #prebakery
@@ -192,3 +234,9 @@ How the parts of the [prebakery](#prebakery) work together.
 [object histories]: #object-history
 [object history]: #object-history
 [TrustedScriptURL]: https://wicg.github.io/trusted-types/dist/spec/#trused-script-url
+[fetched source]: #fetched-source
+[rewritten source]: #rewritten-source
+[output source]: #output-source
+[variable digest]: #variable-digest
+[initial module id]: #initial-module-id
+[untrusted input]: #untrusted-input
