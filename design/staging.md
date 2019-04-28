@@ -92,8 +92,8 @@ Explains how the parts of the [prebakery](#prebakery) work together.
     represented as a URL.  Calls to `require(...)` will produce absolute `file:` URLs
     and uses of ES6 `import` will resolve the string relative to the importing module's
     `import.meta.url`.
-*   <a name="module-glob"> *Module glob* : A [.gitignore][] style glob pattern that can be
-    used, via [extension APIs][] to scan a local directory for all [module ids][] with
+*   <a name="module-glob"> *Module glob* : A .[gitignore][] style glob pattern that can be
+    used, via [extension APIs][] to scan a local directory for all [module id][]s with
     something in common.  This is meant to enable [code generation][].
 *   <a name="module-metadata"> *Module metadata* : Metadata about a [module][] including
     *   any [source map][]
@@ -126,7 +126,7 @@ Explains how the parts of the [prebakery](#prebakery) work together.
     *    `new Module(moduleSource, moduleMetadata)` : creates a [module][] and adds it to the
          [module set][].  The supplied [module metadata][] may include a [source map][].
          Returns a value that may be used with the `import()` operator.
-         The return value may be a `string`, but could change to be a [TrustedResourceURL][].
+         The return value may be a `string`, but could change to be a [TrustedScriptURL][].
 *   <a name="load-order"> *Load order* : The order in which modules were loaded by the [oven][]
     which is the same as the order that modules will be concatenated if a single output is needed.
 *   <a name="base"> *Base* : The base URL of the [module][] often used to resolve import specifiers
@@ -143,8 +143,10 @@ Explains how the parts of the [prebakery](#prebakery) work together.
     will fill based on dynamic computations performed by [early][] code running in the [oven][].
 *   <a name="object-history"> *Object history* : A series of events that describe how a JavaScript
     [`Object`](https://tc39.github.io/ecma262/#sec-object-type) came to have its current state.
-    Events are things like "created via builtin %Object% constructor", "own property with key `"x"`
-    set to value `123`."  Events for all objects managed by a [historian][] are totally ordered
+    Events are things like
+    1.  created via the builtin %Object% constructor
+    1.  own property with key `"x"` set to value `123`.
+    Events for all objects managed by a [historian][] are totally ordered
     so that the histories of multiple objects may be merged into one replayable script.
 
 
@@ -189,3 +191,4 @@ Explains how the parts of the [prebakery](#prebakery) work together.
 [swiss source]: #swiss-source
 [object histories]: #object-history
 [object history]: #object-history
+[TrustedScriptURL]: https://wicg.github.io/trusted-types/dist/spec/#trused-script-url
