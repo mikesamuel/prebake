@@ -240,3 +240,4 @@ How the parts of the [prebakery](#prebakery) work together.
 [variable digest]: #variable-digest
 [initial module id]: #initial-module-id
 [untrusted input]: #untrusted-input
+[code generation]: #code-generation
