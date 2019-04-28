@@ -1,6 +1,6 @@
-# Staging
+# Modular Decomposition
 
-Explains how the parts of the [prebakery](#prebakery) work together.
+How the parts of the [prebakery](#prebakery) work together.
 
 [![modular decomposition](draft-modular-decomposition.png)](draft-modular-decomposition.png)
 
