@@ -1,5 +1,5 @@
 import * as timers from 'timers';
-import { URL } from 'url';
+import { URL, pathToFileURL } from 'url';
 import {
   BabelFileResult,
   Node,
@@ -7,21 +7,29 @@ import {
   parseSync,
   transformFromAstSync,
 } from '@babel/core';
+import { cwd } from 'process';
+import { realpathSync } from 'fs';
 
-import { FetchResult, Fetcher } from './src/fetcher';
-import { ModuleId, ModuleKey } from './src/module-types';
+import {
+  FetchError,
+  FetchResult,
+  Fetcher,
+  nullFetcher,
+  NotUnderstood,
+} from './src/fetcher';
+import { CanonModuleId, ModuleId, ModuleKey, TentativeModuleId } from './src/module';
 
 export class PrebakedModule {
-  moduleId: ModuleId;
+  moduleId: CanonModuleId;
   dependencies: PrebakedModule[] = [];
   error: string | null;
   rawSource: string | null;
   bakedSource: string | null = null;
   sourceMap: string | null = null;
 
-  get moduleKey() { return String(this.moduleId.href); }
+  get moduleKey() { return String(this.moduleId.canon.href); }
 
-  constructor(moduleId : ModuleId, rawSource: string | null, error: string | null) {
+  constructor(moduleId : CanonModuleId, rawSource: string | null, error: string | null) {
     this.moduleId = moduleId;
     this.rawSource = rawSource;
     this.error = error;
@@ -51,9 +59,18 @@ export class Prebakery {
   private waiting: Map<ModuleKey, ((complete: PrebakedModule) => any)[]> = new Map();
   /** Interval ID of a task that consumes the pending queue. */
   private processing : boolean = false;
+  /** The base used for loading initial modules. */
+  private baseModuleId: CanonModuleId;
 
-  constructor(fetcher : Fetcher) {
+  constructor(fetcher : Fetcher, baseModuleId : CanonModuleId | null = null) {
     this.fetcher = fetcher;
+    if (!baseModuleId) {
+      const dir = cwd();
+      baseModuleId = new CanonModuleId(
+        pathToFileURL(dir),
+        pathToFileURL(realpathSync.native(dir)));
+    }
+    this.baseModuleId = baseModuleId;
   }
 
   /**
@@ -65,19 +82,42 @@ export class Prebakery {
     return this._prebake(moduleIds, null, []);
   }
 
-  _prebake(
-    moduleIds: ModuleId[], requester: ModuleId|null,
+  async _prebake(
+    moduleIds: ModuleId[], requester: CanonModuleId|null,
     cycleAvoidance: CycleAvoidance)
   : Promise<Map<ModuleKey, PrebakedModule>> {
+
+    const canonModuleIds : CanonModuleId[] = await Promise.all(moduleIds.map(
+      async (moduleId : ModuleId, i : number) => {
+        if (moduleId instanceof CanonModuleId) {
+          return moduleId;
+        }
+        const result : CanonModuleId | FetchError | NotUnderstood =
+          await this.fetcher.canonicalize(
+            moduleId.abs, requester || this.baseModuleId, nullFetcher);
+        if (result instanceof CanonModuleId) {
+          return result as CanonModuleId;
+        }
+        throw new Error(
+          (result instanceof FetchError && result.error)
+          || `Fetcher does not understand ${ moduleIds[i] }`);
+      }));
+
     const promises : Promise<PrebakedModule>[] = [];
-    for (const id of moduleIds) {
+    for (const id of canonModuleIds) {
       const promise : Promise<PrebakedModule> = new Promise(
         (resolve) => {
           this._fetch(id, requester).then(
-            ({ canonicalModuleId, moduleSource, error } : FetchResult) => {
+            (result : FetchResult | FetchError | NotUnderstood) => {
+              if (!(result instanceof FetchResult)) {
+                const error = (result instanceof FetchError && result.error)
+                  || `Fetch of ${ id } failed`;
+                resolve(new PrebakedModule(id, null, error))
+                return;
+              }
+              let { moduleId, moduleSource } = result as FetchResult;
               console.log('Got fetch result');
-              const moduleKey = String(canonicalModuleId.href);
-              canonicalModuleId = Object.freeze(new URL(moduleKey));
+              const moduleKey = String(moduleId.canon.href);
               const waiterQueue = this.waiting.get(moduleKey);
               if (waiterQueue) {
                 if (cycleAvoidance.indexOf(moduleKey) >= 0) {
@@ -87,7 +127,7 @@ export class Prebakery {
                 }
                 waiterQueue.push(resolve);
               } else {
-                const module = new PrebakedModule(canonicalModuleId, moduleSource, error);
+                const module = new PrebakedModule(moduleId, moduleSource, null);
                 this.moduleKeyToModule.set(moduleKey, module);
                 this.waiting.set(moduleKey, [ resolve ]);
                 this.pending.push(Object.assign(Object.create(null), { moduleKey, module }));
@@ -95,9 +135,8 @@ export class Prebakery {
                 this._prod();
               }
             },
-            (err) => {
-              const canonId = Object.freeze(new URL(String(id.href)));
-              resolve(new PrebakedModule(canonId, null, err.toString() || 'Fetch failed'));
+            (err: Error) => {
+              resolve(new PrebakedModule(id, null, err.toString() || 'Fetch failed'));
             }
           );
         }
@@ -127,7 +166,7 @@ export class Prebakery {
             }
 
             for (let i = 0, n = moduleArr.length; i < n; ++i) {
-              const key = String(moduleIds[i].href);
+              const key = String(canonModuleIds[i].canon.href);
               const module = moduleArr[i];
               map.set(key, module);
             }
@@ -142,8 +181,9 @@ export class Prebakery {
     );
   }
 
-  private _fetch(requested: ModuleId, requester: ModuleId | null): Promise<FetchResult> {
-    return this.fetcher(requested, requester);
+  private _fetch(requested: CanonModuleId, requester: CanonModuleId | null):
+      Promise<FetchResult | FetchError | NotUnderstood> {
+    return this.fetcher.fetch(requested, requester || this.baseModuleId, nullFetcher);
   }
 
   private _prod() {
@@ -244,7 +284,7 @@ export class Prebakery {
         if (!/\.\w+$/.test(relPath)) {
           relPath += '.js';
         }
-        const depModuleId = new URL(relPath, moduleId);
+        const depModuleId = new TentativeModuleId(new URL(relPath, moduleId.abs));
         dependencies.push(depModuleId);
       } else if (descendInto.has(ast.type)) {
         for (const key of Object.getOwnPropertyNames(ast)) {
@@ -281,7 +321,9 @@ export class Prebakery {
               console.log('adding ' + dep.moduleId + ' as a dependency of ' + module.moduleId);
             }
           }
-          console.log(`moduleKey=${ moduleKey }, ast=\n${ JSON.stringify(ast, null, 2) }\ndependencies=${ dependencies }`);
+          console.log(
+            `moduleKey=${ moduleKey }, ast=\n${ JSON.stringify(ast, null, 2) }
+dependencies=${ dependencies }`);
           resolve(module);
         },
         (error) => {
