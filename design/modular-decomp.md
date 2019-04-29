@@ -30,7 +30,7 @@ How the parts of the [prebakery](#prebakery) work together.
         in `foo` relative to base.
     *   fetch([module id][], [base][], next) returns [module source][] and [module metadata][]
 
-    Any fetcher operation may return the special value DOES_NOT_UNDERSTAND to indicate that the
+    Any fetcher operation may return the special value NOT_UNDERSTOOD to indicate that the
     fetcher does not understand the [module id][] or [module glob][].  This allows easy
     chaining of fetchers.
 
