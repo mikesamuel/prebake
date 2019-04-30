@@ -106,8 +106,78 @@ How the parts of the [prebakery](#prebakery) work together.
     *   the [base][] URL
     The [fetcher][] may supply additional metadata fields which will make it through to the output
     unchanged.
+*   <a name="module-lifecycle"> *Module lifecycle* </a> : A module progresses through several
+    well defined stages.  At different stages, it has different information available.
+    For examle, the [output source][] is not available until after the [reknitter][] processes it.
+
+    The module base type will include fields like
+
+    ```ts
+    interface ModuleBaseType {
+      field0 : Field0Type | null;
+      field1 : Field1Type | null;
+    }
+
+    interface ModuleStageFoo extends ModuleBaseType {
+      field0 : Field0Type;
+      field1 : null;
+    }
+    class ModuleStageFoo {
+      field0 : Field0Type;
+      field1 : null = null;
+
+      constructor(field0 : Field0Type) {
+        Object.defineProperty(this, 'field0', { value: field0 });
+      }
+    }
+
+    ...  // Other stage-specific types
+
+    interface ErrorModule extends ModuleBaseType {
+      field0 : Field0Type | null;
+      field1 : Field1Type | null;
+
+      stageReached : string;
+    }
+    class ErrorModule {
+      constructor(failingModule : ModuleBaseType) { ... }
+    }
+    ```
+
+    This should allow stages that subscribe to modules at a particular stage to be typesafe
+    w.r.t. what is available while having the module set store modules at multiple stages using
+    a generic type, and use predicates over a nominal type to decide when to dispatch events
+    (see [module set][]) to listeners.
 *   <a name="module-set"> *Module set* </a> : A set of [module][]s that are [prebaked][prebakery]
     together.
+
+    Prebake stages share a module set so it is a major point of interaction.
+    Modules enter the module set with tentative [module id][]s and more than one stage
+    ([rewriter][], [gatherer][]) need to reference them before their canonical module id.
+
+    Resolving tentative module ids to canonical may require file-system or network operations,
+    so should be non-blocking.
+
+    The module set will support registering interest in events like:
+
+    *   When a caller requests a module via a not-previously-seen tentative module id.
+    *   When a tentative module id resolves to a canonical one and we know whether it
+        is an alias for a previously fetched module, or a fetch error precludes further
+        progress.
+    *   When the [fetcher][] retrieves a module's content or a fetch error precludes
+        further progress.
+    *   When all a module's [static dependencies][] are available and their dependencies
+        are available or an error precludes further progress.
+        When this happens we can statically bound the set of [early][] declarations brought
+        into scope or an error precludes further progress.
+    *   When the [rewriter][] attaches [rewritten source][] and [swiss source][] or an error
+        precludes further progress.
+    *   When the [oven][] receives a [variable digest][] for the module or an error precludes
+        further progress.
+    *   When the [reknitter][] attaches [output source][] or an error precludes further progress.
+
+    To support this generally, the module set is tightly coupled with the [module lifecycle][]
+    but not the [gatherer][] or other prebakery stages.
 *   <a name="module-source"> *Module source* </a> : The source code of a module whether as a string
     or an AST.
     There are several kinds of source in play:
@@ -196,6 +266,16 @@ How the parts of the [prebakery](#prebakery) work together.
     create a module, but a [fetcher][]s can also intercept a [module id][] with a specific
     extension, delegate content loading to the rest of the fetcher chain, and then return
     converted content.
+*   <a name="static-dependencies"> *Static dependencies* </a> : A [module][]'s static dependencies
+    are the modules that it depends on based purely on static analysis.
+
+    For a module that only uses ES262 *ImportDeclaration*s, the static dependencies correspond to
+    [*ModuleRequests*](https://tc39.github.io/ecma262/#sec-imports-static-semantics-modulerequests).
+
+    Since it is a goal to also support CommonJS require, the [gatherer][] also treats any calls
+    of the form `require('string-literal')`, a call where the function is the bare identifier
+    `require` and the sole argument is a string literal, and where there is no declaration of
+    `require` in scope.
 
 [gatherer]: #gatherer
 [prebakery]: #prebakery
@@ -241,3 +321,5 @@ How the parts of the [prebakery](#prebakery) work together.
 [initial module id]: #initial-module-id
 [untrusted input]: #untrusted-input
 [code generation]: #code-generation
+[module lifecycle]: #module-lifecycle
+[static dependencies]: #static-dependencies
