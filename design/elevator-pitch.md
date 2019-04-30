@@ -11,14 +11,14 @@ import { generatedApi } from '../../../bazel-out/src/js/myproject/foo';
 // If the code generator is written in JS, this won't work alongside a
 // strict Content-Security-Policy.
 import { codeGenerator } from './code-generator';
-const usefulFunction = new Function(codeGenerator('./file-in-domain-specific-language'));
+const usefulFunction = new Function('x', codeGenerator('./file-in-domain-specific-language'));
 // Also, this is opaque to static analysis tools.
 
 // Legacy code does this a lot.  Incompatible with Content-Security-Policy.
 const global = new Function('return this')();
 
 // Language introspection doesn't let a program ask a tool to "lint me!"
-// This requires specifying which files are part of the program twice.
+// even though "me" is well-defined at runtime.
 import { linter } from 'linter';
 linter.lint(thisProgram);
 ```
