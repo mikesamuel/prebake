@@ -2,25 +2,30 @@
 
 Dynamic languages like JavaScript don't need a compile phase but benefit from one.
 
-Prebake can run some code early.  Consider:
+Consider:
 
 ```js
-// Make sure you build generated files or this won't work.
+// To import a generated file, you need to invoke a separate build tool.
 import { generatedApi } from '../../../bazel-out/src/js/myproject/foo';
 
 // If the code generator is written in JS, this won't work alongside a
 // strict Content-Security-Policy.
 import { codeGenerator } from './code-generator';
 const usefulFunction = new Function(codeGenerator('./file-in-domain-specific-language'));
+// Also, this is opaque to static analysis tools.
 
-// Code quality tools require calling out to a shell, and you have to
-// doubly specify which JS files to load.
+// Legacy code does this a lot.  Incompatible with Content-Security-Policy.
+const global = new Function('return this')();
+
+// Language introspection doesn't let a program ask a tool to "lint me!"
+// This requires specifying which files are part of the program twice.
+import { linter } from 'linter';
 linter.lint(thisProgram);
 ```
 
-## Dynamic languages
+Prebake takes in a highly dynamic program and produces a reliable, static system.
 
-| Pros | Cons |
+| Pros of Dynamic languages | Cons |
 | ---- | ---- |
 | Can rewrite themselves to adapt to their environment | XSS: Attackers who inject strings can adapt the program to their ends. |
 | Can interoperate with other languages via runtime code generators | Static analysis is missing important parts of the program |
@@ -45,3 +50,4 @@ Prebake aims to blur the distinction between program and build system so small t
 dedicate resources to learning and maintaining a myriad of external tools.  Normal JS
 techniques like `import`, code complete, and interactive debugging should be sufficient to
 interact with, and diagnose problems with code quality tools.
+
