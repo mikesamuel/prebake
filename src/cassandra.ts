@@ -1,4 +1,4 @@
-import { CanonModuleId } from './module';
+import { CanonModuleId } from './module-id';
 
 const { freeze } = Object;
 

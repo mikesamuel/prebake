@@ -17,7 +17,7 @@ import {
   nullFetcher,
   NotUnderstood,
 } from './src/fetcher';
-import { CanonModuleId, ModuleId, ModuleKey, TentativeModuleId } from './src/module';
+import { CanonModuleId, ModuleId, ModuleKey, TentativeModuleId } from './src/module-id';
 
 export class PrebakedModule {
   moduleId: CanonModuleId;

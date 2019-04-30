@@ -54,11 +54,3 @@ export class TentativeModuleId implements ModuleId {
 
 /** Usable as a Map key and corresponds to a ModuleId. */
 export type ModuleKey = string;
-
-export interface ModuleMetadata {
-  base: CanonModuleId;
-  // TODO  contentType
-  // TODO  sourceMap
-  // TODO  importMap
-  properties: { [key: string]: any };
-}

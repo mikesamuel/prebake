@@ -1,6 +1,7 @@
 import { readFile, realpath } from 'fs';
 import { URL, fileURLToPath, pathToFileURL } from 'url';
-import { CanonModuleId, ModuleMetadata } from './module';
+import { CanonModuleId } from './module-id';
+import { ModuleMetadata } from './module-metadata';
 import { Glob } from 'glob';
 
 const { freeze } = Object;
