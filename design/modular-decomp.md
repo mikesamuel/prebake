@@ -240,7 +240,7 @@ How the parts of the [prebakery](#prebakery) work together.
     const x = f();
 
     // BEGIN Generated code that exports variable digest
-    prebakery_nonC3.exportVariableDigest(
+    prebakery_Unpr3d1ct4ble.exportVariableDigest(
         'current module id',
         {
           // Getter delays error for uninitialized variables which reknitter can trap.
