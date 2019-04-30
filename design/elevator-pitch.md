@@ -29,7 +29,7 @@ Prebake takes in a highly dynamic program and produces a reliable, static system
 | ---- | ---- |
 | Can rewrite themselves to adapt to their environment | XSS: Attackers who inject strings can adapt the program to their ends. |
 | Can interoperate with other languages via runtime code generators | Static analysis is missing important parts of the program |
-| Introspection & reflection allow meta-programming | Code quality tools like linters, bundlers, test coverage have to use heuristics to find source files since they can't introspect over program source. |
+| Introspection & reflection allow meta-programming | Code quality tools (linters, bundlers, test coverage) resort to heuristics (and lots of hand-tuning) to find sources since they can't introspect over program source. |
 
 ## Goal
 
