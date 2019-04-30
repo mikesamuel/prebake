@@ -27,7 +27,7 @@ Prebake takes in a highly dynamic program and produces a reliable, static system
 
 | Pros of Dynamic languages | Cons |
 | ---- | ---- |
-| Can rewrite themselves to adapt to their environment | XSS: Attackers who inject strings can adapt the program to their ends. |
+| Can rewrite themselves to adapt to their environment | XSS: Attackers who control critical strings can subvert the program to their ends. |
 | Can interoperate with other languages via runtime code generators | Static analysis is missing important parts of the program |
 | Introspection & reflection allow meta-programming | Code quality tools (linters, bundlers, test coverage) resort to heuristics (and lots of hand-tuning) to find sources since they can't introspect over program source. |
 
