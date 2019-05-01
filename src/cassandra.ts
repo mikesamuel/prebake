@@ -1,55 +1,41 @@
-import { CanonModuleId } from './module-id';
+import { ModuleId } from './module-id';
 
-const { freeze } = Object;
+export type logLevel = 'debug' | 'info' | 'warn' | 'error';
 
-export interface Cassandra {
-  warn(moduleId: CanonModuleId, line: number, message: string): void;
-  error(moduleId: CanonModuleId, line: number, message: string): void;
+export interface CassandraEvent {
+  level: logLevel;
+  moduleId: ModuleId;
+  /** In the identified module. */
+  line: number | null;
+  /** Human readable text. */
+  message: string;
 }
+
+export type Cassandra = (e: CassandraEvent) => void;
 
 export function cassandraChain(...cassandras: Cassandra[]) {
   cassandras = [...cassandras];
   const n = cassandras.length;
 
-  return freeze({
-    warn(moduleId: CanonModuleId, line: number, message: string) {
-      let exc = null;
-      for (let i = 0; i < n; ++i) {
-        try {
-          cassandras[i].warn(moduleId, line, message);
-        } catch (e) {
-          exc = e;
-        }
+  return (e: CassandraEvent) => {
+    let exc = null;
+    for (let i = 0; i < n; ++i) {
+      try {
+        cassandras[i]({...e});
+      } catch (e) {
+        exc = e;
       }
-      if (exc !== null) {
-        throw exc;
-      }
-    },
-    error(moduleId: CanonModuleId, line: number, message: string) {
-      let exc = null;
-      for (let i = 0; i < n; ++i) {
-        try {
-          cassandras[i].error(moduleId, line, message);
-        } catch (e) {
-          exc = e;
-        }
-      }
-      if (exc !== null) {
-        throw exc;
-      }
-    },
-  });
+    }
+    if (exc !== null) {
+      throw exc;
+    }
+  };
 }
 
 export function cassandraToConsoleMaker(underlyingConsole: Console = global.console) {
-  return freeze({
-    warn(moduleId: CanonModuleId, line: number, message: string) {
-      underlyingConsole.warn(`${ moduleId.abs.href }:${ line }: ${ message }`);
-    },
-    error(moduleId: CanonModuleId, line: number, message: string) {
-      underlyingConsole.error(`${ moduleId.abs.href }:${ line }: ${ message }`);
-    },
-  });
+  return ({ level, line, message, moduleId }: CassandraEvent) => {
+    underlyingConsole[level](`${ moduleId.abs.href }:${ line }: ${ message }`);
+  };
 }
 
 export const cassandraToConsole = cassandraToConsoleMaker();
