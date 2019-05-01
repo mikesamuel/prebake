@@ -29,7 +29,7 @@ export class PrebakedModule {
 
   get moduleKey() { return String(this.moduleId.canon.href); }
 
-  constructor(moduleId : CanonModuleId, rawSource: string | null, error: string | null) {
+  constructor(moduleId: CanonModuleId, rawSource: string | null, error: string | null) {
     this.moduleId = moduleId;
     this.rawSource = rawSource;
     this.error = error;
@@ -46,7 +46,7 @@ interface Job {
 }
 
 export class Prebakery {
-  private fetcher : Fetcher;
+  private fetcher: Fetcher;
   /** Maps the string form of module IDs to */
   private moduleKeyToModule: Map<ModuleKey, PrebakedModule> = new Map();
   /** Set of the string forms of canonical moduleIds of modules that are complete. */
@@ -58,11 +58,11 @@ export class Prebakery {
    */
   private waiting: Map<ModuleKey, ((complete: PrebakedModule) => any)[]> = new Map();
   /** Interval ID of a task that consumes the pending queue. */
-  private processing : boolean = false;
+  private processing = false;
   /** The base used for loading initial modules. */
   private baseModuleId: CanonModuleId;
 
-  constructor(fetcher : Fetcher, baseModuleId : CanonModuleId | null = null) {
+  constructor(fetcher: Fetcher, baseModuleId: CanonModuleId | null = null) {
     this.fetcher = fetcher;
     if (!baseModuleId) {
       const dir = cwd();
@@ -78,7 +78,7 @@ export class Prebakery {
    * promise to a map that maps the input module ids to prebaked modules.
    * The returned map will also include entries for any dependencies.
    */
-  prebake(...moduleIds : ModuleId[]) : Promise<Map<ModuleKey, PrebakedModule>> {
+  prebake(...moduleIds: ModuleId[]): Promise<Map<ModuleKey, PrebakedModule>> {
     return this._prebake(moduleIds, null, []);
   }
 
@@ -87,35 +87,35 @@ export class Prebakery {
     cycleAvoidance: CycleAvoidance)
   : Promise<Map<ModuleKey, PrebakedModule>> {
 
-    const canonModuleIds : CanonModuleId[] = await Promise.all(moduleIds.map(
-      async (moduleId : ModuleId, i : number) => {
+    const canonModuleIds: CanonModuleId[] = await Promise.all(moduleIds.map(
+      async (moduleId: ModuleId, i: number) => {
         if (moduleId instanceof CanonModuleId) {
           return moduleId;
         }
-        const result : CanonModuleId | FetchError | NotUnderstood =
+        const result: CanonModuleId | FetchError | NotUnderstood =
           await this.fetcher.canonicalize(
             moduleId.abs, requester || this.baseModuleId, nullFetcher);
         if (result instanceof CanonModuleId) {
-          return result as CanonModuleId;
+          return result;
         }
         throw new Error(
           (result instanceof FetchError && result.error)
           || `Fetcher does not understand ${ moduleIds[i] }`);
       }));
 
-    const promises : Promise<PrebakedModule>[] = [];
+    const promises: Promise<PrebakedModule>[] = [];
     for (const id of canonModuleIds) {
-      const promise : Promise<PrebakedModule> = new Promise(
+      const promise: Promise<PrebakedModule> = new Promise(
         (resolve) => {
           this._fetch(id, requester).then(
-            (result : FetchResult | FetchError | NotUnderstood) => {
+            (result: FetchResult | FetchError | NotUnderstood) => {
               if (!(result instanceof FetchResult)) {
                 const error = (result instanceof FetchError && result.error)
                   || `Fetch of ${ id } failed`;
-                resolve(new PrebakedModule(id, null, error))
+                resolve(new PrebakedModule(id, null, error));
                 return;
               }
-              let { moduleId, moduleSource } = result as FetchResult;
+              const { moduleId, moduleSource } = result;
               console.log('Got fetch result');
               const moduleKey = String(moduleId.canon.href);
               const waiterQueue = this.waiting.get(moduleKey);
@@ -147,12 +147,12 @@ export class Prebakery {
     return new Promise(
       (resolve, reject) => {
         Promise.all(promises).then(
-          (modules : Iterable<PrebakedModule>) => {
-            const moduleArr : PrebakedModule[] = Array.from(modules);
-            const map : Map<ModuleKey, PrebakedModule> = new Map();
-            const seen : Set<PrebakedModule> = new Set();
+          (modules: Iterable<PrebakedModule>) => {
+            const moduleArr: PrebakedModule[] = Array.from(modules);
+            const map: Map<ModuleKey, PrebakedModule> = new Map();
+            const seen: Set<PrebakedModule> = new Set();
 
-            function putModuleAndDeps(module : PrebakedModule) {
+            function putModuleAndDeps(module: PrebakedModule) {
               const { moduleKey } = module;
               if (!map.has(moduleKey)) {
                 map.set(moduleKey, module);
@@ -175,7 +175,7 @@ export class Prebakery {
             }
             resolve(map);
           },
-          (err : Error) => { reject(err); }
+          (err: Error) => { reject(err); }
         );
       }
     );
@@ -266,6 +266,7 @@ export class Prebakery {
     this.waiting.delete(moduleKey);
     if (waiters) {
       for (const waiter of waiters) {
+        // tslint:disable-next-line ban
         setTimeout(
           () => waiter(module),
           0);
@@ -292,7 +293,7 @@ export class Prebakery {
           if (value && typeof value === 'object' && typeof value.type === 'string') {
             walk(value);
           } else if (Array.isArray(value)) {
-            const arr: any[] = (<any[]>value);
+            const arr: any[] = (value);
             for (const el of arr) {
               if (el && typeof el === 'object' && typeof el.type === 'string') {
                 walk(el);
@@ -352,4 +353,4 @@ dependencies=${ dependencies }`);
     // See https://astexplorer.net/ using babel-eslint-7.2.3 as parser
     // TODO: Then run selected items.
   }
-};
+}

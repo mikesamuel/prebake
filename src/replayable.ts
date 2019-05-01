@@ -10,7 +10,7 @@ import { inspect } from 'util';
 const globalObject: object =
       typeof global !== 'undefined' ? global :
       typeof window !== 'undefined' ? window :
-      (() => { throw new Error() })();
+      (() => { throw new Error(); })();
 
 const {
   defineProperty: refDefineProperty,
@@ -41,19 +41,19 @@ const {
   hasOwnProperty,
 } = Object;
 
-const GlobalObject = Object;
-const GlobalArray = Array;
+const builtinObject = Object;
+const builtinArray = Array;
 
 const error = console.error.bind(console);
 
 //// Side-step problems with user-code changing builtin prototypes
 class ReliableWeakMap extends WeakMap {}
-for (const key of (Object.getOwnPropertyNames(WeakMap.prototype) as Array<keyof WeakMap<any, any>>)) {
+for (const key of (Object.getOwnPropertyNames(WeakMap.prototype) as (keyof WeakMap<any, any>)[])) {
   ReliableWeakMap.prototype[key] = WeakMap.prototype[key];
 }
 
 class ReliableSet extends Set {}
-for (const key of (Object.getOwnPropertyNames(Set.prototype) as Array<keyof Set<any>>)) {
+for (const key of (Object.getOwnPropertyNames(Set.prototype) as (keyof Set<any>)[])) {
   if (key !== 'size') {
     ReliableSet.prototype[key] = Set.prototype[key];
   }
@@ -62,8 +62,8 @@ for (const key of (Object.getOwnPropertyNames(Set.prototype) as Array<keyof Set<
 const originalJSONParse = JSON.parse;
 // JSON.parse is odd because it creates values out of whole cloth.
 function replayableJSONParse(
-  ObjectCtorProxy: new () => Object,
-  ArrayCtorProxy: new () => Array<unknown>,
+  objectCtorProxy: new () => Object,
+  arrayCtorProxy: new () => unknown[],
   createProxy: (proto: object | null) => Object,
   requireProxied: (x: object) => void) {
   return function parse(json: string, reviver?: (key: string, value: any) => any) {
@@ -91,15 +91,15 @@ function replayableJSONParse(
 
         let newElement;
         if (isArray(element)) {
-          newElement = new ArrayCtorProxy();
+          newElement = new arrayCtorProxy();
           requireProxied(newElement);
           for (let i = 0, n = element.length; i < n; ++i) {
             internalizeProperty('' + i, element[i], descriptorMap);
           }
         } else {
-          newElement = new ObjectCtorProxy();
+          newElement = new objectCtorProxy();
           requireProxied(newElement);
-          for (let elementName of getOwnPropertyNames(element)) {
+          for (const elementName of getOwnPropertyNames(element)) {
             internalizeProperty(elementName, element[elementName], descriptorMap);
           }
         }
@@ -111,7 +111,7 @@ function replayableJSONParse(
       return typeof reviver === 'function'
           ? reviver(name, element) : element;
     }
-    return internalize("", parsed);
+    return internalize('', parsed);
   };
 }
 
@@ -120,54 +120,42 @@ function replayableJSONParse(
 //
 // We null out the prototype so that entries do not need to carry extra properties
 // for us to be able to lookup properties on generic events without recourse to hasOwnProperty.
-type ApplyEvent =
-  { type: 'apply',
-    seq: number, p?: null, x: Function, y?: null, //z?: null,
-    thisValue: any, args: any[], desc?: null, __proto__: null };
-type ConstructEvent =
-  { type: 'construct',
-    seq: number, p?: null, x: new(...args:any[])=>any, y?: null, //z?: null,
-    thisValue?: null, args: any[], desc?: null, __proto__: null };
-type SetEvent =
-  { type: 'set',
-    seq: number, p: PropertyKey, x: object, y: any, //z?: null,
-    thisValue?: null, args?: null, desc?: null, __proto__: null };
-type DeleteEvent =
-  { type: 'deleteProperty',
-    seq: number, p: PropertyKey, x: object, y?: null, //z?: null,
-    thisValue?: null, args?: null, desc?: null, __proto__: null };
-type GetEvent =
-  { type: 'get',
-    seq: number, p: PropertyKey, x: object, y?: null, //z?: null,
-    thisValue?: null, args?: null, desc?: null, __proto__: null };
-type DefineEvent =
-  { type: 'defineProperty',
-    seq: number, p: PropertyKey, x: object, y?: null, //z?: null,
-    thisValue?: null, args?: null, desc: PropertyDescriptor, __proto__: null };
-type PreventExtensionsEvent =
-  { type: 'preventExtensions',
-    seq: number, p?: null, x: object, y?: null, //z?: null,
-    thisValue?: null, args?: null, desc?: null, __proto__: null };
-type SetPrototypeOfEvent =
-  { type: 'setPrototypeOf',
-    seq: number, p?: null, x: object, y: object | null, //z?: null,
-    thisValue?: null, args?: null, desc?: null, __proto__: null };
-type GetGlobalEvent =
-  { type: 'getGlobal',
-    seq: number, p?: null, x?: null, y?: null, //z?: null,
-    thisValue?: null, args?: null, desc?: null, __proto__: null };
-type CodeBindEvent =
-  { type: 'codeBind',
-    seq: number, p?: null, x: any, y?: null, //z?: null,
-    thisValue?: null, args?: object[], desc?: null, __proto__: null };
-type GetPrototypeOfEvent =
-  { type: 'getPrototypeOf',
-    seq: number, p?: null, x: any, y?: null, //z?: null,
-    thisValue?: null, args?: null, desc?: null, __proto__: null };
-type GetOwnPropertyDescriptorEvent =
-  { type: 'getOwnPropertyDescriptor',
-    seq: number, p: PropertyKey, x: any, y?: null, //z?: null,
-    thisValue?: null, args?: null, desc?: null, __proto__: null };
+interface ApplyEvent { type: 'apply';
+    seq: number; p?: null; x: Function; y?: null; // z?: null,
+    thisValue: any; args: any[]; desc?: null; __proto__: null; }
+interface ConstructEvent { type: 'construct';
+    seq: number; p?: null; x: new(...args: any[]) => any; y?: null; // z?: null,
+    thisValue?: null; args: any[]; desc?: null; __proto__: null; }
+interface SetEvent { type: 'set';
+    seq: number; p: PropertyKey; x: object; y: any; // z?: null,
+    thisValue?: null; args?: null; desc?: null; __proto__: null; }
+interface DeleteEvent { type: 'deleteProperty';
+    seq: number; p: PropertyKey; x: object; y?: null; // z?: null,
+    thisValue?: null; args?: null; desc?: null; __proto__: null; }
+interface GetEvent { type: 'get';
+    seq: number; p: PropertyKey; x: object; y?: null; // z?: null,
+    thisValue?: null; args?: null; desc?: null; __proto__: null; }
+interface DefineEvent { type: 'defineProperty';
+    seq: number; p: PropertyKey; x: object; y?: null; // z?: null,
+    thisValue?: null; args?: null; desc: PropertyDescriptor; __proto__: null; }
+interface PreventExtensionsEvent { type: 'preventExtensions';
+    seq: number; p?: null; x: object; y?: null; // z?: null,
+    thisValue?: null; args?: null; desc?: null; __proto__: null; }
+interface SetPrototypeOfEvent { type: 'setPrototypeOf';
+    seq: number; p?: null; x: object; y: object | null; // z?: null,
+    thisValue?: null; args?: null; desc?: null; __proto__: null; }
+interface GetGlobalEvent { type: 'getGlobal';
+    seq: number; p?: null; x?: null; y?: null; // z?: null,
+    thisValue?: null; args?: null; desc?: null; __proto__: null; }
+interface CodeBindEvent { type: 'codeBind';
+    seq: number; p?: null; x: any; y?: null; // z?: null,
+    thisValue?: null; args?: object[]; desc?: null; __proto__: null; }
+interface GetPrototypeOfEvent { type: 'getPrototypeOf';
+    seq: number; p?: null; x: any; y?: null; // z?: null,
+    thisValue?: null; args?: null; desc?: null; __proto__: null; }
+interface GetOwnPropertyDescriptorEvent { type: 'getOwnPropertyDescriptor';
+    seq: number; p: PropertyKey; x: any; y?: null; // z?: null,
+    thisValue?: null; args?: null; desc?: null; __proto__: null; }
 
 /** The ways an object can come to exist. */
 type Origin = ApplyEvent | ConstructEvent | GetGlobalEvent | GetEvent | CodeBindEvent
@@ -178,13 +166,13 @@ type Change = SetEvent | DeleteEvent | GetEvent | DefineEvent | PreventExtension
 type Event = Origin | Change;
 
 /** Collects events related to one object. */
-type History<T> = {
-  proxy: T,          // A proxy over the object whose history this is that maintains changes.
-  origin: Origin,    // How the object came to be
-  changes: Change[], // Accumulates changes.
-};
+interface History<T> {
+  proxy: T;          // A proxy over the object whose history this is that maintains changes.
+  origin: Origin;    // How the object came to be
+  changes: Change[]; // Accumulates changes.
+}
 
-type indirectProxyTarget = { target: object }
+interface IndirectProxyTarget { target: object; }
 
 export class ObjectGraph {
   /** Maps objects to their history. */
@@ -192,10 +180,10 @@ export class ObjectGraph {
   /** Maps proxies to the objects they proxy. */
   private proxyToObj: WeakMap<object, object>;
   /** The handler for newly created proxies. */
-  private proxyHandler: ProxyHandler<indirectProxyTarget>;
+  private proxyHandler: ProxyHandler<IndirectProxyTarget>;
   /** A counter used to for new events' seq field. */
   private seq: number;
-  debug: boolean = false;
+  debug = false;
 
   constructor() {
     const self = this;
@@ -207,14 +195,14 @@ export class ObjectGraph {
     // We don't directly proxy objects because get traps for readonly properties
     // require returning the same value, so break proxying.
     this.proxyHandler = {
-      getPrototypeOf({ target }: indirectProxyTarget): object | null {
+      getPrototypeOf({ target }: IndirectProxyTarget): object | null {
         return self.getProxy_(
           refGetPrototypeOf(target),
           (seq) => ({
             __proto__: null, type: 'getPrototypeOf', seq, x: target,
           }));
       },
-      setPrototypeOf({ target }: indirectProxyTarget, v: any): boolean {
+      setPrototypeOf({ target }: IndirectProxyTarget, v: any): boolean {
         const history = self.objToHistory.get(target);
         if (!history) { throw new Error(); }
         history.changes.push(
@@ -223,10 +211,10 @@ export class ObjectGraph {
           });
         return refSetPrototypeOf(target, v);
       },
-      isExtensible({ target }: indirectProxyTarget): boolean {
+      isExtensible({ target }: IndirectProxyTarget): boolean {
         return refIsExtensible(target);
       },
-      preventExtensions({ target }: indirectProxyTarget): boolean {
+      preventExtensions({ target }: IndirectProxyTarget): boolean {
         const history = self.objToHistory.get(target);
         if (!history) { throw new Error(); }
         history.changes.push(
@@ -236,7 +224,7 @@ export class ObjectGraph {
           });
         return refPreventExtensions(target);
       },
-      getOwnPropertyDescriptor({ target }: indirectProxyTarget, p: PropertyKey)
+      getOwnPropertyDescriptor({ target }: IndirectProxyTarget, p: PropertyKey)
       : PropertyDescriptor | undefined {
         return self.getProxy_(
           refGetOwnPropertyDescriptor(target, p),
@@ -244,10 +232,10 @@ export class ObjectGraph {
             __proto__: null, type: 'getOwnPropertyDescriptor', seq, x: target, p
           }));
       },
-      has({ target }: indirectProxyTarget, p: PropertyKey): boolean {
+      has({ target }: IndirectProxyTarget, p: PropertyKey): boolean {
         return refHas(target, p);
       },
-      get({ target }: indirectProxyTarget, p: PropertyKey, receiver: any): any {
+      get({ target }: IndirectProxyTarget, p: PropertyKey, receiver: any): any {
         for (let obj = target; obj; obj = getPrototypeOf(obj)) {
           const desc = getOwnPropertyDescriptor(obj, p);
           if (desc) {
@@ -278,7 +266,7 @@ export class ObjectGraph {
             type: 'get', seq, x: target, p, // y: receiver
           }));
       },
-      set({ target }: indirectProxyTarget, p: PropertyKey, value: any): boolean {
+      set({ target }: IndirectProxyTarget, p: PropertyKey, value: any): boolean {
         const history = self.objToHistory.get(target);
         if (!history) { throw new Error(); }
         history.changes.push(
@@ -288,7 +276,7 @@ export class ObjectGraph {
           });
         return refSet(target, p, value);
       },
-      deleteProperty({ target }: indirectProxyTarget, p: PropertyKey): boolean {
+      deleteProperty({ target }: IndirectProxyTarget, p: PropertyKey): boolean {
         const history = self.objToHistory.get(target);
         if (!history) { throw new Error(); }
         history.changes.push(
@@ -298,7 +286,7 @@ export class ObjectGraph {
           });
         return refDeleteProperty(target, p);
       },
-      defineProperty({ target }: indirectProxyTarget, p: PropertyKey,
+      defineProperty({ target }: IndirectProxyTarget, p: PropertyKey,
                      attributes: PropertyDescriptor): boolean {
         const history = self.objToHistory.get(target);
         if (!history) { throw new Error(); }
@@ -309,13 +297,13 @@ export class ObjectGraph {
           });
         return refDefineProperty(target, p, attributes);
       },
-      enumerate(/*{ target }: indirectProxyTarget*/): PropertyKey[] {
+      enumerate(/*{ target }: IndirectProxyTarget*/): PropertyKey[] {
         throw new Error('TODO');  // Is enumerate actually a thing?
       },
-      ownKeys({ target }: indirectProxyTarget): PropertyKey[] {
+      ownKeys({ target }: IndirectProxyTarget): PropertyKey[] {
         return refOwnKeys(target);
       },
-      apply({ target }: indirectProxyTarget, thisValue: any, argArray: any[]): any {
+      apply({ target }: IndirectProxyTarget, thisValue: any, argArray: any[]): any {
         const result = refApply(target as Function, thisValue, argArray);
         // Exceptions are special case wrapped in catch blocks so no need to proxy
         // them as they bubble out.
@@ -328,7 +316,7 @@ export class ObjectGraph {
           args: [...argArray],
         }));
       },
-      construct({ target }: indirectProxyTarget, argArray: any[]/*, newTarget?: any*/): object {
+      construct({ target }: IndirectProxyTarget, argArray: any[]/*, newTarget?: any*/): object {
         const result = refConstruct(target as Function, argArray);
         // Exceptions are special case wrapped in catch blocks so no need to proxy
         // them as they bubble out.
@@ -336,7 +324,7 @@ export class ObjectGraph {
           __proto__: null,
           type: 'construct',
           seq,
-          x: target as new(...args: any[])=>any,
+          x: target as new(...args: any[]) => any,
           args: [...argArray],
         }));
       },
@@ -345,9 +333,15 @@ export class ObjectGraph {
     const globalProxy = this.getProxy(
       globalObject,
       (seq) => ({ __proto__: null, type: 'getGlobal', seq }));
+
+    // Fetch some builtins for proxy trap side effect
+    // tslint:disable-next-line:no-unused-expression
     globalProxy.Object;
+    // tslint:disable-next-line:no-unused-expression
     globalProxy.Array;
+    // tslint:disable-next-line:no-unused-expression
     globalProxy.Function;
+    // tslint:disable-next-line:no-unused-expression
     globalProxy.Object.create;
 
     // JSON.parse is odd because it creates objects using non-proxyable internals.
@@ -357,8 +351,8 @@ export class ObjectGraph {
       (seq: number, internalTarget: { target: object }): GetEvent => {
         // Sneakily replace the function that is actually called.
         internalTarget.target = replayableJSONParse(
-          this.getProxy(GlobalObject),
-          this.getProxy(GlobalArray),
+          this.getProxy(builtinObject),
+          this.getProxy(builtinArray),
           this.getProxy(create),
           (x: object) => {
             if (x && (typeof x === 'object' || typeof x === 'function')) {
@@ -374,7 +368,7 @@ export class ObjectGraph {
       });
   }
 
-  getProxy(x: any, origin?: null | ((seq: number) => Origin)):any {
+  getProxy(x: any, origin?: null | ((seq: number) => Origin)): any {
     return this.getProxy_(x, origin);
   }
 
@@ -408,11 +402,12 @@ export class ObjectGraph {
             // TODO: Ideally indirectTarget would have [[Apply]] and [[Call]] only when x does.
             // TODO: Distinguish between function* and lambdas and regular functions.
             // TODO: Distinguish between async and non-async.
+            // tslint:disable-next-line
             xtype === 'function' ? function () {}
             : isArray(x) ? []
             : {};
-        (indirectTargetInitial as indirectProxyTarget).target = obj;
-        const indirectTarget = (indirectTargetInitial as indirectProxyTarget);
+        (indirectTargetInitial as IndirectProxyTarget).target = obj;
+        const indirectTarget = (indirectTargetInitial as IndirectProxyTarget);
 
         const proxy = new Proxy(indirectTarget, this.proxyHandler);
         history = {
@@ -510,7 +505,7 @@ export class ObjectGraph {
   serializeHistories(startingPoints: object[]): Event[] {
     const events = [];
     const processed = new ReliableSet();
-    let unprocessed = [...startingPoints];
+    const unprocessed = [...startingPoints];
     function maybeEnqueue(x: any) {
       if (x) {
         const to = typeof x;
@@ -550,7 +545,7 @@ export class ObjectGraph {
         const { x, y, /*z,*/ thisValue, args, desc } = events[i];
         maybeEnqueue(x);
         maybeEnqueue(y);
-        //maybeEnqueue(z);
+        // maybeEnqueue(z);
         maybeEnqueue(thisValue);
 
         if (args) {

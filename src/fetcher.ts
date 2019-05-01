@@ -6,7 +6,7 @@ import { Glob } from 'glob';
 
 const { freeze } = Object;
 
-let oneCreated: boolean = false;
+let oneCreated = false;
 
 export class NotUnderstood {
   // @ts-ignore never used
@@ -24,7 +24,7 @@ export class NotUnderstood {
   }
 }
 
-export const NOT_UNDERSTOOD : NotUnderstood = new NotUnderstood();
+export const NOT_UNDERSTOOD: NotUnderstood = new NotUnderstood();
 freeze(NOT_UNDERSTOOD);
 
 
@@ -69,13 +69,13 @@ export interface Fetcher {
 }
 
 export const nullFetcher = freeze({
-  canonicalize() : Promise<NotUnderstood> {
+  canonicalize(): Promise<NotUnderstood> {
     return Promise.resolve(NOT_UNDERSTOOD);
   },
-  list() : Promise<NotUnderstood> {
+  list(): Promise<NotUnderstood> {
     return Promise.resolve(NOT_UNDERSTOOD);
   },
-  fetch() : Promise<NotUnderstood> {
+  fetch(): Promise<NotUnderstood> {
     return Promise.resolve(NOT_UNDERSTOOD);
   },
 });
@@ -84,7 +84,7 @@ export function fetcherChain(...fetchers: Fetcher[]) {
   fetchers = [...fetchers];
   const n = fetchers.length;
 
-  function chain(left : number, afterChain: Fetcher) {
+  function chain(left: number, afterChain: Fetcher) {
     if (left === n) {
       return afterChain;
     }
@@ -92,7 +92,7 @@ export function fetcherChain(...fetchers: Fetcher[]) {
       async canonicalize(moduleUrl: URL, base: CanonModuleId, next: Fetcher)
           : Promise<CanonModuleId | FetchError | NotUnderstood> {
         for (let i = left; i < n; ++i) {
-          let result = await (fetchers[i].canonicalize(moduleUrl, base, chain(left + 1, next)));
+          const result = await (fetchers[i].canonicalize(moduleUrl, base, chain(left + 1, next)));
           if (result instanceof NotUnderstood) {
             continue;
           }
@@ -103,7 +103,7 @@ export function fetcherChain(...fetchers: Fetcher[]) {
       async list(moduleGlob: string, base: CanonModuleId, next: Fetcher)
           : Promise<Iterator<CanonModuleId> | FetchError | NotUnderstood> {
         for (let i = left; i < n; ++i) {
-          let result = await (fetchers[i].list(moduleGlob, base, chain(left + 1, next)));
+          const result = await (fetchers[i].list(moduleGlob, base, chain(left + 1, next)));
           if (result instanceof NotUnderstood) {
             continue;
           }
@@ -114,7 +114,7 @@ export function fetcherChain(...fetchers: Fetcher[]) {
       async fetch(moduleId: CanonModuleId, base: CanonModuleId, next: Fetcher)
           : Promise<FetchResult | FetchError | NotUnderstood> {
         for (let i = left; i < n; ++i) {
-          let result = await (fetchers[i].fetch(moduleId, base, chain(left + 1, next)));
+          const result = await (fetchers[i].fetch(moduleId, base, chain(left + 1, next)));
           if (result instanceof NotUnderstood) {
             continue;
           }
@@ -128,7 +128,7 @@ export function fetcherChain(...fetchers: Fetcher[]) {
 }
 
 /** Given a root directory, returns a fetcher. */
-export const fileSystemFetcher : Fetcher = freeze({
+export const fileSystemFetcher: Fetcher = freeze({
   canonicalize(moduleUrl: URL)
       : Promise<CanonModuleId | FetchError | NotUnderstood> {
     if (moduleUrl.protocol !== 'file:') {
@@ -136,7 +136,7 @@ export const fileSystemFetcher : Fetcher = freeze({
     }
     return new Promise((resolve) => {
       realpath.native(moduleUrl.pathname, (err, resolvedPath) => {
-        if (err != null) {
+        if (err !== null) {
           resolve(new FetchError(String(err)));
         } else {
           resolve(new CanonModuleId(moduleUrl, pathToFileURL(resolvedPath)));
@@ -152,6 +152,7 @@ export const fileSystemFetcher : Fetcher = freeze({
     }
     const thisFetcher = this;
     return new Promise((resolve) => {
+      // tslint:disable-next-line:no-unused-expression
       new Glob(
         moduleGlob,
         {
@@ -166,7 +167,7 @@ export const fileSystemFetcher : Fetcher = freeze({
             const promises = files.map(
               (file) => thisFetcher.canonicalize(pathToFileURL(file)));
             Promise.all(promises).then(
-              (results : Array<CanonModuleId | FetchError | NotUnderstood>) => {
+              (results: (CanonModuleId | FetchError | NotUnderstood)[]) => {
                 const moduleIds = [];
                 for (let i = 0, n = results.length; i < n; ++i) {
                   const result = results[i];
@@ -192,7 +193,7 @@ export const fileSystemFetcher : Fetcher = freeze({
     if (moduleId.canon.protocol !== 'file:') {
       return Promise.resolve(NOT_UNDERSTOOD);
     }
-    let path = fileURLToPath(moduleId.canon);
+    const path = fileURLToPath(moduleId.canon);
 
     return new Promise((resolve) => {
       readFile(path, { encoding: 'UTF-8' }, (error, data) => {
