@@ -35,23 +35,23 @@ export interface Module {
   rewrittenAst: Node | null;
   swissAst: Node | null;
   outputAst: Node | null;
-  error: ModuleError | null;
+  errors: ModuleError[] | null;
 }
 
 /**
  * A module that may turn out to be an alias of another module
  * once the id is canonicalized.
  */
-export interface UnfetchedModule extends Module {
+export interface UnresolvedModule extends Module {
   id: TentativeModuleId;
   kind: ModuleKind;
   source: null;
   originalAst: null;
   rewrittenAst: null;
   swissAst: null;
-  error: null;
+  errors: null;
 }
-export class UnfetchedModule {
+export class UnresolvedModule {
   id: TentativeModuleId;
   kind: ModuleKind;
   source = null;
@@ -77,7 +77,7 @@ export interface ResolvedModule extends Module {
   originalAst: null;
   rewrittenAst: null;
   swissAst: null;
-  error: null;
+  errors: null;
 }
 export class ResolvedModule {
   id: CanonModuleId;
@@ -106,7 +106,7 @@ export interface RewrittenModule extends Module {
   originalAst: Node;
   rewrittenAst: Node;
   swissAst: Node;
-  error: null;
+  errors: null;
 }
 export class RewrittenModule {
   id: CanonModuleId;
@@ -139,7 +139,7 @@ export interface OutputModule extends Module {
   rewrittenAst: Node;
   swissAst: Node;
   outputAst: Node;
-  error: null;
+  errors: null;
 }
 export class OutputModule {
   id: CanonModuleId;
@@ -167,13 +167,16 @@ export class OutputModule {
  * An error module that cannot be processed further.
  */
 export interface ErrorModule extends Module {
-  error: ModuleError;
+  errors: ModuleError[];
 }
 export class ErrorModule {
   // @ts-ignore never used
   private notStructural: null = null;
 
-  constructor(m: Module, error: ModuleError) {
+  constructor(m: Module, errors: ModuleError[]) {
+    if (errors.length === 0) {  // Ironic?
+      throw new Error();
+    }
     this.id = m.id;
     this.kind = m.kind;
     this.source = m.source;
@@ -182,6 +185,24 @@ export class ErrorModule {
     this.swissAst = m.swissAst;
     this.outputAst = m.outputAst;
 
-    this.error = error;
+    this.errors = [...errors];
   }
+
+  maybeMergeErrors(...modules: (Module | null)[]) {
+    const merged = new Set();
+    merged.add(this);
+    for (const m of modules) {
+      if (!m || merged.has(m)) {
+        continue;
+      }
+      merged.add(m);
+      if (m.errors) {
+        this.errors.push(...m.errors);
+      }
+    }
+  }
+}
+
+export interface CanonModule extends Module {
+  id: CanonModuleId;
 }

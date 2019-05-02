@@ -1,13 +1,27 @@
+/**
+ * @fileoverview
+ * class ModuleId identifies modules.
+ */
+
 import { URL } from 'url';
 
 const { defineProperty } = Object;
 
+/** Usable as a Map key and corresponds to a ModuleId. */
+export type ModuleKey = string;
+
 /** Identifies a module. */
 export interface ModuleId {
-  /** Absolute or non-hierarchical (like data:). */
+  /**
+   * Absolute or non-hierarchical (like data:).
+   * The absolute URL should be used to resolve relative module specifiers.
+   */
   abs: URL;
-  /** A URL whose string value can be used as a key for the module. */
+  /** A URL that can be used to unalias module specifiers. */
   canon: URL | null;
+
+  /** Can be used as a Map key. */
+  key(): ModuleKey;
 }
 
 // These interface sub-type the properties without requiring they
@@ -34,6 +48,10 @@ export class CanonModuleId implements ModuleId {
   toString() {
     return this.abs.href;
   }
+
+  key() {
+    return this.canon.href;
+  }
 }
 
 /** A module id whose canonical URL is not yet known. */
@@ -50,7 +68,8 @@ export class TentativeModuleId implements ModuleId {
   toString() {
     return this.abs.href;
   }
-}
 
-/** Usable as a Map key and corresponds to a ModuleId. */
-export type ModuleKey = string;
+  key() {
+    return this.abs.href;
+  }
+}
