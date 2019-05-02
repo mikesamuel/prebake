@@ -8,7 +8,7 @@ const { describe, it } = require('mocha');
 
 const { Prebakery } = require('../lib/prebake.js');
 const { fileSystemFetcher } = require('../lib/src/fetcher.js');
-const { CanonModuleId, TentativeModuleId } = require('../lib/src/module.js');
+const { CanonModuleId, TentativeModuleId } = require('../lib/src/module-id.js');
 
 describe('cases', () => {
   const caseRoot = path.join(__dirname, 'cases');
