@@ -29,7 +29,6 @@ export type ModuleError = CassandraEvent;
  */
 export interface Module {
   id: ModuleId;
-  kind: ModuleKind;
   source: string | null;
   originalAst: Node | null;
   rewrittenAst: Node | null;
@@ -44,7 +43,6 @@ export interface Module {
  */
 export interface UnresolvedModule extends Module {
   id: TentativeModuleId;
-  kind: ModuleKind;
   source: null;
   originalAst: null;
   rewrittenAst: null;
@@ -52,8 +50,6 @@ export interface UnresolvedModule extends Module {
   errors: null;
 }
 export class UnresolvedModule {
-  id: TentativeModuleId;
-  kind: ModuleKind;
   source = null;
   originalAst = null;
   rewrittenAst = null;
@@ -62,9 +58,8 @@ export class UnresolvedModule {
   // @ts-ignore never used
   private notStructural: null = null;
 
-  constructor(id: TentativeModuleId, kind: ModuleKind) {
+  constructor(id: TentativeModuleId) {
     this.id = id;
-    this.kind = kind;
   }
 }
 
@@ -80,9 +75,6 @@ export interface ResolvedModule extends Module {
   errors: null;
 }
 export class ResolvedModule {
-  id: CanonModuleId;
-  kind: ModuleKind;
-  source: string;
   originalAst = null;
   rewrittenAst = null;
   swissAst = null;
@@ -90,9 +82,8 @@ export class ResolvedModule {
   // @ts-ignore never used
   private notStructural: null = null;
 
-  constructor(id: CanonModuleId, kind: ModuleKind, source: string) {
+  constructor(id: CanonModuleId, source: string) {
     this.id = id;
-    this.kind = kind;
     this.source = source;
   }
 }
@@ -109,19 +100,12 @@ export interface RewrittenModule extends Module {
   errors: null;
 }
 export class RewrittenModule {
-  id: CanonModuleId;
-  kind: ModuleKind;
-  source: string;
-  originalAst: Node;
-  rewrittenAst: Node;
-  swissAst: Node;
   error = null;
   // @ts-ignore never used
   private notStructural: null = null;
 
   constructor(m: ResolvedModule, originalAst: Node, rewrittenAst: Node, swissAst: Node) {
     this.id = m.id;
-    this.kind = m.kind;
     this.source = m.source;
     this.originalAst = originalAst;
     this.rewrittenAst = rewrittenAst;
@@ -142,19 +126,12 @@ export interface OutputModule extends Module {
   errors: null;
 }
 export class OutputModule {
-  id: CanonModuleId;
-  kind: ModuleKind;
-  source: string;
-  originalAst: Node;
-  rewrittenAst: Node;
-  swissAst: Node;
   error = null;
   // @ts-ignore never used
   private notStructural: null = null;
 
   constructor(m: RewrittenModule, outputAst: Node) {
     this.id = m.id;
-    this.kind = m.kind;
     this.source = m.source;
     this.originalAst = m.originalAst;
     this.rewrittenAst = m.rewrittenAst;
@@ -178,7 +155,6 @@ export class ErrorModule {
       throw new Error();
     }
     this.id = m.id;
-    this.kind = m.kind;
     this.source = m.source;
     this.originalAst = m.originalAst;
     this.rewrittenAst = m.rewrittenAst;

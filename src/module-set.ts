@@ -10,12 +10,11 @@
  * it should be easy for stages to know when to stop waiting.
  */
 
-import { CanonModuleId, ModuleId, ModuleKey } from './module-id';
+import { CanonModuleId, ModuleId, ModuleKey, TentativeModuleId } from './module-id';
 import {
-  CanonModule, ErrorModule, Module,
-  ModuleKind, ResolvedModule, UnresolvedModule,
+  CanonModule, ErrorModule, Module, ResolvedModule, UnresolvedModule,
 } from './module';
-import { Fetcher } from './fetcher';
+import { resolve } from './node-modules';
 
 type ModuleSubtype = new (... args: any[]) => Module;
 
@@ -56,12 +55,9 @@ export class ModuleSet {
     new WeakMap();
   /** Called when an unseen tentative module id enters idToModule. */
   private newModuleCallbacks: ((m: UnresolvedModule) => void)[] = [];
-  private loadOrder: Promise<CanonModuleId>[] = [];
-  private fetcher: Fetcher;
   private base: CanonModuleId;
 
-  constructor(fetcher: Fetcher, base: CanonModuleId) {
-    this.fetcher = fetcher;
+  constructor(base: CanonModuleId) {
     this.base = base;
   }
 
@@ -195,7 +191,32 @@ export class ModuleSet {
     return resolvable.promise as Promise<T | ErrorModule>;
   }
 
-  fetch(kind: ModuleKind, moduleIdStr: string, base: CanonModuleId | null): UnresolvedModule {
-    throw new Error('TODO' + moduleIdStr + base + kind + this.fetcher + this.loadOrder + this.base);
+  /**
+   * Creates a new module which the gatherer will normally look for.
+   */
+  async fetch(moduleIdStr: string, base: CanonModuleId | null, requesterLine: number | null):
+      Promise<UnresolvedModule | ErrorModule> {
+    base = base || this.base;
+    const absUrl = await resolve(moduleIdStr, base.abs);
+    if (absUrl === null) {
+      const errorModule = new ErrorModule(
+        new UnresolvedModule(new TentativeModuleId(new URL(
+          `invalid-id:${ encodeURIComponent(moduleIdStr) }`))),
+        [
+          {
+            level: 'error',
+            moduleId: base,
+            line: requesterLine,
+            message: `Failed to resolve module ${ moduleIdStr } relative to ${ base.abs.href }`
+          }
+        ]);
+      this.set(errorModule);
+      return errorModule;
+    } else {
+      const tentativeId: TentativeModuleId = new TentativeModuleId(absUrl);
+      const unresolvedModule = new UnresolvedModule(tentativeId);
+      this.set(unresolvedModule);
+      return unresolvedModule;
+    }
   }
 }
