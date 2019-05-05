@@ -14,6 +14,7 @@ export class Gatherer {
   private fetcher: Fetcher;
   private cassandra: Cassandra;
   private moduleSet: ModuleSet;
+  /** Keep track of what we've fetched to avoid overlapping, redundant requests. */
   private previouslyFetched: Set<String> = new Set();
 
   constructor(fetcher: Fetcher, cassandra: Cassandra, moduleSet: ModuleSet) {
@@ -21,6 +22,7 @@ export class Gatherer {
     this.cassandra = cassandra;
     this.moduleSet = moduleSet;
 
+    // Listen for unresolved modules that this can resolve.
     this.moduleSet.onNewModule(
       async (m: UnresolvedModule) => {
         const base = m.fetchContext.moduleId;
