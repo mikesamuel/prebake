@@ -10,7 +10,8 @@
  * it should be easy for stages to know when to stop waiting.
  */
 
-import { CanonModuleId, ModuleId, ModuleKey, TentativeModuleId } from './module-id';
+import { ModuleId, ModuleKey, TentativeModuleId } from './module-id';
+import { FetchContext } from './fetcher';
 import {
   CanonModule, ErrorModule, Module, ResolvedModule, UnresolvedModule,
 } from './module';
@@ -55,11 +56,6 @@ export class ModuleSet {
     new WeakMap();
   /** Called when an unseen tentative module id enters idToModule. */
   private newModuleCallbacks: ((m: UnresolvedModule) => void)[] = [];
-  private base: CanonModuleId;
-
-  constructor(base: CanonModuleId) {
-    this.base = base;
-  }
 
   /** The module identified by the given ID if any. */
   get(moduleId: ModuleId): Module | null {
@@ -86,7 +82,11 @@ export class ModuleSet {
     // 6. When a module resolves to or is promoted to an error module, all its onResolution
     //    callbacks.
     // 7. New modules are broadcast to onNewModule callbacks
-    const unresolvedKey: ModuleKey = newModule.id.abs.href;
+
+    const unresolvedKey: ModuleKey = JSON.stringify({
+      target: newModule.id.abs.href,
+      source: newModule.metadata.base.canon.href,
+    });
     const resolvedKey: ModuleKey | null = newModule.id.canon ? newModule.id.canon.href : null;
 
     let finalModule: Module;
@@ -111,7 +111,7 @@ export class ModuleSet {
       finalModule = newModule;
     }
 
-    if (resolvedKey) {
+    if (resolvedKey !== null) {
       this.idToModule.set(resolvedKey, finalModule);
     }
     this.idToModule.set(unresolvedKey, finalModule);
@@ -194,19 +194,21 @@ export class ModuleSet {
   /**
    * Creates a new module which the gatherer will normally look for.
    */
-  async fetch(moduleIdStr: string, base: CanonModuleId | null, requesterLine: number | null):
+  async fetch(moduleIdStr: string, context: FetchContext):
       Promise<UnresolvedModule | ErrorModule> {
-    base = base || this.base;
+    const base = context.moduleId;
     const absUrl = await resolve(moduleIdStr, base.abs);
     if (absUrl === null) {
       const errorModule = new ErrorModule(
-        new UnresolvedModule(new TentativeModuleId(new URL(
-          `invalid-id:${ encodeURIComponent(moduleIdStr) }`))),
+        new UnresolvedModule(
+          new TentativeModuleId(new URL(
+            `invalid-id:${ encodeURIComponent(moduleIdStr) }`)),
+          context),
         [
           {
             level: 'error',
             moduleId: base,
-            line: requesterLine,
+            line: context.line,
             message: `Failed to resolve module ${ moduleIdStr } relative to ${ base.abs.href }`
           }
         ]);
@@ -214,7 +216,7 @@ export class ModuleSet {
       return errorModule;
     } else {
       const tentativeId: TentativeModuleId = new TentativeModuleId(absUrl);
-      const unresolvedModule = new UnresolvedModule(tentativeId);
+      const unresolvedModule = new UnresolvedModule(tentativeId, context);
       this.set(unresolvedModule);
       return unresolvedModule;
     }

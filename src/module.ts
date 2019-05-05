@@ -8,7 +8,9 @@ import {
   Node,
 } from '@babel/core';
 
+import { FetchContext } from './fetcher';
 import { CanonModuleId, ModuleId, TentativeModuleId } from './module-id';
+import { ModuleMetadata } from './module-metadata';
 import { CassandraEvent } from './cassandra';
 
 /**
@@ -29,6 +31,7 @@ export type ModuleError = CassandraEvent;
  */
 export interface Module {
   id: ModuleId;
+  metadata: ModuleMetadata;
   source: string | null;
   originalAst: Node | null;
   rewrittenAst: Node | null;
@@ -37,12 +40,19 @@ export interface Module {
   errors: ModuleError[] | null;
 }
 
+export interface CanonModule extends Module {
+  id: CanonModuleId;
+}
+
 /**
  * A module that may turn out to be an alias of another module
  * once the id is canonicalized.
  */
 export interface UnresolvedModule extends Module {
   id: TentativeModuleId;
+  metadata: ModuleMetadata;
+  /** Context about a fetch. */
+  fetchContext: FetchContext;
   source: null;
   originalAst: null;
   rewrittenAst: null;
@@ -54,20 +64,24 @@ export class UnresolvedModule {
   originalAst = null;
   rewrittenAst = null;
   swissAst = null;
-  error = null;
+  errors = null;
   // @ts-ignore never used
   private notStructural: null = null;
 
-  constructor(id: TentativeModuleId) {
+  constructor(id: TentativeModuleId, fetchContext: FetchContext) {
     this.id = id;
+    this.fetchContext = fetchContext;
+    this.metadata = {
+      base: fetchContext.moduleId,
+      properties: {},
+    };
   }
 }
 
 /**
  * A module with a resolve id that is not an alias of another non-tentative or error module.
  */
-export interface ResolvedModule extends Module {
-  id: CanonModuleId;
+export interface ResolvedModule extends CanonModule {
   source: string;
   originalAst: null;
   rewrittenAst: null;
@@ -78,21 +92,21 @@ export class ResolvedModule {
   originalAst = null;
   rewrittenAst = null;
   swissAst = null;
-  error = null;
+  errors = null;
   // @ts-ignore never used
   private notStructural: null = null;
 
-  constructor(id: CanonModuleId, source: string) {
+  constructor(id: CanonModuleId, source: string, metadata: ModuleMetadata) {
     this.id = id;
     this.source = source;
+    this.metadata = metadata;
   }
 }
 
 /**
  * A module that is ready for early running.
  */
-export interface RewrittenModule extends Module {
-  id: CanonModuleId;
+export interface RewrittenModule extends CanonModule {
   source: string;
   originalAst: Node;
   rewrittenAst: Node;
@@ -100,13 +114,14 @@ export interface RewrittenModule extends Module {
   errors: null;
 }
 export class RewrittenModule {
-  error = null;
+  errors = null;
   // @ts-ignore never used
   private notStructural: null = null;
 
   constructor(m: ResolvedModule, originalAst: Node, rewrittenAst: Node, swissAst: Node) {
     this.id = m.id;
     this.source = m.source;
+    this.metadata = m.metadata;
     this.originalAst = originalAst;
     this.rewrittenAst = rewrittenAst;
     this.swissAst = swissAst;
@@ -116,8 +131,7 @@ export class RewrittenModule {
 /**
  * A fully prebaked module.
  */
-export interface OutputModule extends Module {
-  id: CanonModuleId;
+export interface OutputModule extends CanonModule {
   source: string;
   originalAst: Node;
   rewrittenAst: Node;
@@ -126,13 +140,14 @@ export interface OutputModule extends Module {
   errors: null;
 }
 export class OutputModule {
-  error = null;
+  errors = null;
   // @ts-ignore never used
   private notStructural: null = null;
 
   constructor(m: RewrittenModule, outputAst: Node) {
     this.id = m.id;
     this.source = m.source;
+    this.metadata = m.metadata;
     this.originalAst = m.originalAst;
     this.rewrittenAst = m.rewrittenAst;
     this.swissAst = m.swissAst;
@@ -156,6 +171,7 @@ export class ErrorModule {
     }
     this.id = m.id;
     this.source = m.source;
+    this.metadata = m.metadata;
     this.originalAst = m.originalAst;
     this.rewrittenAst = m.rewrittenAst;
     this.swissAst = m.swissAst;
@@ -177,8 +193,4 @@ export class ErrorModule {
       }
     }
   }
-}
-
-export interface CanonModule extends Module {
-  id: CanonModuleId;
 }

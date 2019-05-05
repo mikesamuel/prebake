@@ -1,7 +1,9 @@
+import { CanonModuleId } from './module-id';
+import { CassandraEvent } from './cassandra';
+import { FetchContext } from './fetcher';
+import { ModuleMetadata } from './module-metadata';
 import { readFile, realpath } from 'fs';
 import { URL, fileURLToPath, pathToFileURL } from 'url';
-import { CanonModuleId } from './module-id';
-import { ModuleMetadata } from './module-metadata';
 import { Glob } from 'glob';
 
 const { freeze } = Object;
@@ -28,6 +30,24 @@ export const NOT_UNDERSTOOD: NotUnderstood = new NotUnderstood();
 freeze(NOT_UNDERSTOOD);
 
 
+/**
+ * The context in which a fetch occurs.
+ * Most of this is for diagnostic purposes but the moduleId is normative.
+ */
+export interface FetchContext extends CassandraEvent {
+  /**
+   * The requesting module (NOT the requested module) or the global base if no requestor.
+   * This is normative; it may be used for access control.
+   * This may determine the appropriate scope in an import map.
+   */
+  moduleId: CanonModuleId;
+  level: 'info';
+}
+
+
+/**
+ * A successful module fetch result.
+ */
 export class FetchResult {
   moduleId: CanonModuleId;
   moduleSource: string;
