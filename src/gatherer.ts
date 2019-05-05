@@ -1,3 +1,9 @@
+/**
+ * @fileoverview
+ * class Gatherer listens to a ModuleSet for new module ids, uses a Fetcher to replace
+ * UnresolvedModules with ResolvedModules that have source code and metadata attached.
+ */
+
 import { Cassandra, CassandraEvent } from './cassandra';
 import { ErrorModule, ResolvedModule, UnresolvedModule } from './module';
 import { CanonModuleId } from './module-id';
