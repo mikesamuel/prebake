@@ -560,9 +560,3 @@ describe('replayable', () => {
     expect(+pool[4]).to.equal(946684800000);
   });
 });
-
-
-// TODO: test JSON.parse with a reviver that is a declared function and test that
-//   x = JSON.parse('[ { "type": "Date", "millis": 123456789 } ]', reviverThatCreatesDates);
-// and make sure that, though the origin is a call to reviverThatCreatesDates
-// that the reviver is not called twice and x[0] === the value from the only call.
