@@ -1,6 +1,6 @@
 /**
  * @fileoverview
- * class Module represents an ES262 or CJS module.
+ * interface Module represents an ES262 or CJS module.
  * Exports include the Module type and subtypes for each processing stage.
  */
 
@@ -193,4 +193,30 @@ export class ErrorModule {
       }
     }
   }
+}
+
+const stageOrder: Map<Function, number> = new Map([
+  [ UnresolvedModule as Function, 0 ],
+  [ ResolvedModule, 1 ],
+  [ RewrittenModule, 2 ],
+  [ OutputModule, 3 ],
+  // Modules should never transition out of an error state so compare high.
+  [ ErrorModule, 1000000000 ],
+]);
+
+/**
+ * If a is later stage returns 1, -1 if earlier, 0 if same.
+ * Assumes that a Module is an instance of one of the classes defined herein.
+ */
+export function compareModuleStage(a: Module, b: Module): (-1 | 0 | 1) {
+  const aNum = stageOrder.get(a.constructor);
+  if (typeof aNum !== 'number') {
+    throw new Error(`Unrecognized module: ${ a }`);
+  }
+  const bNum = stageOrder.get(b.constructor);
+  if (typeof bNum !== 'number') {
+    throw new Error(`Unrecognized module: ${ b }`);
+  }
+  // Type-safe since the difference cannot be NaN.
+  return Math.sign(aNum - bNum) as (-1 | 0 | 1);
 }

@@ -14,6 +14,7 @@ import { ModuleId, ModuleKey, TentativeModuleId } from './module-id';
 import { FetchContext } from './fetcher';
 import {
   CanonModule, ErrorModule, Module, ResolvedModule, UnresolvedModule,
+  compareModuleStage,
 } from './module';
 import { resolve } from './node-modules';
 
@@ -75,13 +76,13 @@ export class ModuleSet {
   set(newModule: Module): Module {
     // We need to preserve several properties.
     // 1. No module transitions out of ErrorModule
-    // 2. When newModule is a ResolvedModule, it doesn't clobber an aliased canon module.
+    // 2. A module at a later stage doesn't clobber an one at an earlier stage.
     // 3. All other sets take effect.
-    // 4. When a canonical module is promoted to a canonical module, onResolution callbacks fire.
-    // 5. When a tentative module id is resolved to a canonical ID, onResolution callbacks fire.
-    // 6. When a module resolves to or is promoted to an error module, all its onResolution
-    //    callbacks.
-    // 7. New modules are broadcast to onNewModule callbacks
+    // 4. New modules are broadcast to onNewModule callbacks
+    // 5. When a canonical module is promoted to a canonical module, onResolution callbacks fire.
+    // 6. When a tentative module id is resolved to a canonical ID, onResolution callbacks fire.
+    // 7. When a module resolves to or is promoted to an error module, all its onResolution
+    //    callbacks fire.
 
     const unresolvedKey: ModuleKey = JSON.stringify({
       target: newModule.id.abs.href,
@@ -103,12 +104,16 @@ export class ModuleSet {
       finalModule = oldUnresolvedModule;
     } else if (newModule instanceof ErrorModule) {
       finalModule = newModule;
-    } else if (newModule instanceof ResolvedModule && oldResolvedModule) {
-      // Preserve property 2
-      finalModule = oldResolvedModule;
     } else {
-      // Preserve property 3
-      finalModule = newModule;
+      // Preserve property 2
+      if (oldResolvedModule && compareModuleStage(newModule, oldResolvedModule) <= 0) {
+        finalModule = oldResolvedModule;
+      } else if (oldUnresolvedModule && compareModuleStage(newModule, oldUnresolvedModule) <= 0) {
+        finalModule = oldUnresolvedModule;
+      } else {
+        // Preserve property 3
+        finalModule = newModule;
+      }
     }
 
     if (resolvedKey !== null) {
@@ -116,50 +121,52 @@ export class ModuleSet {
     }
     this.idToModule.set(unresolvedKey, finalModule);
 
-    if (finalModule === newModule) {
-      if (oldUnresolvedModule) {
-        let oldModule: Module;
-        if (oldUnresolvedModule.id.canon) {
-          // Preserve property 4
-          if (!oldResolvedModule) {
-            throw new Error('old module is canon but not present by that name');
-          }
-          oldModule = oldResolvedModule as CanonModule;
-        } else {
-          // Preserve property 5
-          oldModule = oldUnresolvedModule;
-        }
-        const typeToPromiseMap = this.toNotifyOnPromotion.get(oldModule);
-        this.toNotifyOnPromotion.delete(oldModule);
-        if (typeToPromiseMap) {
-          // Preserve property 6
-          if (finalModule instanceof ErrorModule) {
-            for (const [, { resolveTo }] of typeToPromiseMap) {
-              resolveTo(finalModule);
-            }
-          } else {
-            this.toNotifyOnPromotion.set(finalModule, typeToPromiseMap);
-            const typeKey = newModule.constructor as ModuleSubtype;
-            const resolvable = typeToPromiseMap.get(typeKey);
-            typeToPromiseMap.delete(typeKey);
-            if (resolvable) {
-              resolvable.resolveTo(finalModule);
-            }
-          }
-        }
-      } else if (newModule instanceof UnresolvedModule) {
-        // Preserve property 7
-        for (const newModuleCallback of this.newModuleCallbacks) {
-          try {
-            newModuleCallback(newModule);
-          } catch (e) {
-            console.error(`Dispatch to callback failed`, e);
-          }
+    if (finalModule === newModule && newModule instanceof UnresolvedModule) {
+      // Preserve property 4
+      for (const newModuleCallback of this.newModuleCallbacks) {
+        try {
+          newModuleCallback(newModule);
+        } catch (e) {
+          console.error(`Dispatch to callback failed`, e);
         }
       }
     }
 
+    if (finalModule.id.canon || finalModule instanceof ErrorModule) {
+      const targetModule = finalModule as (CanonModule | ErrorModule);
+      if (oldUnresolvedModule) {
+        // Preserve property 5
+        this.dispatchNotifications_(oldUnresolvedModule, targetModule);
+      }
+
+      if (oldResolvedModule) {
+        // Preserve property 6
+        this.dispatchNotifications_(oldResolvedModule, targetModule);
+      }
+    }
+
     return finalModule;
+  }
+
+  private dispatchNotifications_(oldModule: Module, newModule: (ErrorModule | CanonModule)) {
+    const typeToPromiseMap = this.toNotifyOnPromotion.get(oldModule);
+    this.toNotifyOnPromotion.delete(oldModule);
+    if (typeToPromiseMap) {
+      if (newModule instanceof ErrorModule) {
+        // Preserve property 7
+        for (const [, { resolveTo }] of typeToPromiseMap) {
+          resolveTo(newModule);
+        }
+      } else {
+        this.toNotifyOnPromotion.set(newModule, typeToPromiseMap);
+        const typeKey = newModule.constructor as ModuleSubtype;
+        const resolvable = typeToPromiseMap.get(typeKey);
+        typeToPromiseMap.delete(typeKey);
+        if (resolvable) {
+          resolvable.resolveTo(newModule);
+        }
+      }
+    }
   }
 
   /** Registers a callback to be notified when a new, unresolved module enters the pipeline. */
@@ -194,8 +201,7 @@ export class ModuleSet {
   /**
    * Creates a new module which the gatherer will normally look for.
    */
-  async fetch(moduleIdStr: string, context: FetchContext):
-      Promise<UnresolvedModule | ErrorModule> {
+  async fetch(moduleIdStr: string, context: FetchContext): Promise<Module> {
     const base = context.moduleId;
     const absUrl = await resolve(moduleIdStr, base.abs);
     if (absUrl === null) {
@@ -212,13 +218,11 @@ export class ModuleSet {
             message: `Failed to resolve module ${ moduleIdStr } relative to ${ base.abs.href }`
           }
         ]);
-      this.set(errorModule);
-      return errorModule;
+      return this.set(errorModule);
     } else {
       const tentativeId: TentativeModuleId = new TentativeModuleId(absUrl);
       const unresolvedModule = new UnresolvedModule(tentativeId, context);
-      this.set(unresolvedModule);
-      return unresolvedModule;
+      return this.set(unresolvedModule);
     }
   }
 }
