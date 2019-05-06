@@ -13,6 +13,10 @@ export interface CassandraEvent {
 
 export type Cassandra = (e: CassandraEvent) => void;
 
+export function nullCassandra(_: CassandraEvent): void {
+  // This FunctionBody left intentionally blank.
+}
+
 export function cassandraChain(...cassandras: Cassandra[]) {
   cassandras = [...cassandras];
   const n = cassandras.length;
