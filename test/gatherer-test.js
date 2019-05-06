@@ -3,8 +3,9 @@
 const { URL } = require('url');
 const { expect } = require('chai');
 const { describe, xit, it, afterEach, beforeEach } = require('mocha');
-const { FetchError, FetchResult, NOT_UNDERSTOOD } = require('../lib/src/fetcher.js');
-const { UnresolvedModule, ResolvedModule } = require('../lib/src/module.js');
+const { nullCassandra } = require('../lib/src/cassandra.js');
+const { FetchError, FetchResult, nullFetcher, NOT_UNDERSTOOD } = require('../lib/src/fetcher.js');
+const { ErrorModule, ResolvedModule, UnresolvedModule } = require('../lib/src/module.js');
 const { CanonModuleId } = require('../lib/src/module-id.js');
 const { ModuleSet } = require('../lib/src/module-set.js');
 const { Gatherer } = require('../lib/src/gatherer.js');
@@ -255,6 +256,102 @@ describe('gatherer', () => {
       messages.length = 0;
 
       done();
+    }
+  });
+
+  describe('borken fetchers', () => {
+    const borkenFetchers = [
+      [ 'noone understands me', nullFetcher ],
+      [
+        'i had 3 jobs',
+        {
+          canonicalize() {
+            return new FetchError('denied id');
+          },
+          list() { throw new Error('should not call'); },
+          fetch() { throw new Error('should not call'); },
+        },
+      ],
+      [
+        'no source for you',
+        {
+          canonicalize(url) {
+            return new CanonModuleId(url, url);
+          },
+          list() { throw new Error('should not call'); },
+          fetch() {
+            return new FetchError('denied content');
+          },
+        },
+      ],
+      [
+        'if you insist',
+        {
+          canonicalize(url) {
+            return new CanonModuleId(url, url);
+          },
+          list() { throw new Error('should not call'); },
+          fetch(id, base) {
+            const result = this.called
+                  ? new FetchResult(
+                    id,
+                    'pushy',
+                    {
+                      base,
+                      properties: {}
+                    })
+                  : new FetchError('go \'way.  maybe later');
+            this.called = true;
+            return result;
+          },
+          called: false,
+        },
+      ],
+    ];
+
+    for (const [ fetcherName, fetcher ] of borkenFetchers) {
+      it(fetcherName, async() => {
+        // Events in order.
+        // We don't want to see anything other than an unresolved module after an error.
+        const seen = [];
+        // If we rerequest a module whose resolution has errored out, we should not
+        // observe a non-error state.
+        const gatherer = new Gatherer(fetcher, nullCassandra, moduleSet);
+        const baseUrl = new URL('data:text/javascript,"Base"');
+        const moduleUrl = new URL('data:text/javascript,"module"');
+        const base = new CanonModuleId(baseUrl, baseUrl);
+        const waiting = [];
+
+        moduleSet.onNewModule(
+          (m) => {
+            seen.push(m.constructor.name);
+            if (m instanceof UnresolvedModule) {
+              const p = moduleSet.onResolution(m);
+              waiting.push(p);
+              p.then((m) => {
+                seen.push(m.constructor.name);
+              });
+            }
+          });
+
+        for (let attemptsLeft = 2; --attemptsLeft;) {
+          const result = await moduleSet.fetch(
+            moduleUrl.href,
+            {
+              moduleId: base,
+              line: 1,
+              level: 'info',
+              message: '',
+            });
+          seen.push(result.constructor.name);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        await Promise.all(waiting);
+
+        expect([]).to.deep.equal(
+          seen.filter((x) => x !== UnresolvedModule.name && x !== ErrorModule.name));
+      });
     }
   });
 });
