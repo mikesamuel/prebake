@@ -38,6 +38,8 @@ export interface Module {
   swissAst: Node | null;
   outputAst: Node | null;
   errors: ModuleError[] | null;
+
+  constructor: new (...args: unknown[]) => this;
 }
 
 export interface CanonModule extends Module {

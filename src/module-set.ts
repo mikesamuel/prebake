@@ -18,7 +18,7 @@ import {
 } from './module';
 import { resolve } from './node-modules';
 
-type ModuleSubtype = new (... args: any[]) => Module;
+type ModuleSubtype<T extends Module> = new (...args: unknown[]) => T;
 
 /** Separable handles to a promise and a function that will cause it to resolve. */
 interface Resolvable<T> {
@@ -53,10 +53,10 @@ export class ModuleSet {
    *
    * The keys should be a subset of idToModule's values.
    */
-  private toNotifyOnPromotion: WeakMap<Module, Map<ModuleSubtype, Resolvable<Module>>> =
+  private toNotifyOnPromotion: WeakMap<Module, Map<ModuleSubtype<Module>, Resolvable<Module>>> =
     new WeakMap();
   /** Called when an unseen tentative module id enters idToModule. */
-  private newModuleCallbacks: ((m: UnresolvedModule) => void)[] = [];
+  private promotionCallbacks: Map<ModuleSubtype<Module>, ((m: Module) => void)[]> = new Map();
 
   /** The module identified by the given ID if any. */
   get(moduleId: ModuleId): Module | null {
@@ -121,15 +121,18 @@ export class ModuleSet {
     }
     this.idToModule.set(unresolvedKey, finalModule);
 
-    if (finalModule === newModule && newModule instanceof UnresolvedModule) {
+    if (finalModule === newModule) {
       // Preserve property 4
-      for (const newModuleCallback of this.newModuleCallbacks) {
-        try {
-          newModuleCallback(newModule);
-        } catch (e) {
-          console.error(`Dispatch to callback failed`, e);
+      (<T extends Module>(m: T) => {
+        const subtype: ModuleSubtype<T> = m.constructor;
+        for (const callback of this.getPromotionCallbacks(subtype)) {
+          try {
+            callback(m);
+          } catch (e) {
+            console.error(`Dispatch to callback failed`, e);
+          }
         }
-      }
+      })(newModule);
     }
 
     if (finalModule.id.canon || finalModule instanceof ErrorModule) {
@@ -159,9 +162,9 @@ export class ModuleSet {
         }
       } else {
         this.toNotifyOnPromotion.set(newModule, typeToPromiseMap);
-        const typeKey = newModule.constructor as ModuleSubtype;
-        const resolvable = typeToPromiseMap.get(typeKey);
-        typeToPromiseMap.delete(typeKey);
+        const subtype: ModuleSubtype<ErrorModule | CanonModule> = newModule.constructor;
+        const resolvable = typeToPromiseMap.get(subtype);
+        typeToPromiseMap.delete(subtype);
         if (resolvable) {
           resolvable.resolveTo(newModule);
         }
@@ -171,19 +174,32 @@ export class ModuleSet {
 
   /** Registers a callback to be notified when a new, unresolved module enters the pipeline. */
   onNewModule(cb: (m: UnresolvedModule) => void): void {
-    this.newModuleCallbacks.push(cb);
+    this.onAnyPromotedTo(cb, UnresolvedModule.prototype.constructor);
+  }
+
+  private getPromotionCallbacks<T extends Module>(subtype: ModuleSubtype<T>): ((m: T) => void)[] {
+    const callbackList = this.promotionCallbacks.get(subtype) || [];
+    if (!callbackList.length) {
+      this.promotionCallbacks.set(subtype, callbackList);
+    }
+    return callbackList as ((m: T) => void)[];
+  }
+
+  /** Registers a callback to be notified when a new, unresolved module enters the pipeline. */
+  onAnyPromotedTo<T extends Module>(cb: (m: T) => void, subtype: ModuleSubtype<T>): void {
+    this.getPromotionCallbacks(subtype).push(cb);
   }
 
   /** A promise that resolves when the given module is resolved or transitions to an error. */
   onResolution(m: UnresolvedModule): Promise<ResolvedModule | ErrorModule> {
-    return this.onPromotionTo(m, ResolvedModule);
+    return this.onPromotionTo(m, ResolvedModule.prototype.constructor);
   }
 
   /**
    * A promise that resolves when the given module is promoted to the given type or
    * transitions to an error.
    */
-  onPromotionTo<T extends CanonModule>(m: Module, subtype: new (...args: any[]) => T):
+  onPromotionTo<T extends CanonModule>(m: Module, subtype: ModuleSubtype<T>):
       Promise<T | ErrorModule> {
     let typeMap = this.toNotifyOnPromotion.get(m);
     if (!typeMap) {
