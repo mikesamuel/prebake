@@ -19,9 +19,6 @@ async function runImpExpTest(source, want) {
   const outputs = [];
   const ast = parseSync(source, parseOptions);
   await findImportsExports(ast, outputs);
-  if (!outputs.length && want.length) {  // DO NOT COMMIT
-    console.log(JSON.stringify(ast, null, 2));
-  }
   expect(norm(want)).to.deep.equal(norm(outputs));
 }
 
@@ -321,16 +318,130 @@ describe('rewriter/find-imports-exports', () => {
         },
       ]);
   });
-  xit('require', () => {
-    // TODO
+  it('bare require', () => {
+    return runImpExpTest(
+      `require('./foo')`,
+      [
+        {
+          findingType: 'import',
+          linkType: 'cjs',
+          moduleSpecifier: './foo',
+          symbols: [],
+        },
+      ]);
   });
-  xit('module.exports.x = ', () => {
-    // TODO
+  it('dynamic require', () => {
+    return runImpExpTest(
+      `require(x)`,
+      []);
+  });
+  it('require in initializer', () => {
+    return runImpExpTest(
+      `const namespace = require('./foo');`,
+      [
+        {
+          findingType: 'import',
+          linkType: 'cjs',
+          moduleSpecifier: './foo',
+          symbols: [
+            {
+              line: 1,
+              local: 'namespace',
+              remote: '*',
+            },
+          ],
+        },
+      ]);
+  });
+  it('require in destructured initializer', () => {
+    // TODO: try without const
+    return runImpExpTest(
+      `const { a, /* @prebake.moot */ b, c: d, ...rest } = require('foo');`,
+      [
+        {
+          findingType: 'import',
+          linkType: 'cjs',
+          moduleSpecifier: 'foo',
+          symbols: [
+            {
+              line: 1,
+              local: 'a',
+              remote: 'a',
+            },
+            {
+              line: 1,
+              local: 'b',
+              remote: 'b',
+              stage: 'moot',
+            },
+            {
+              line: 1,
+              local: 'd',
+              remote: 'c',
+            },
+            {
+              line: 1,
+              local: 'rest',
+              remote: '*',
+            },
+          ],
+        },
+      ]);
+  });
+  it('require masked', () => {
+    return runImpExpTest(
+      `
+      const x = require('./x');
+      function require(x) { console.log(x); }
+      `,
+      []);
+  });
+  it('module.exports.x = ', () => {
+    return runImpExpTest(
+      `module.exports.x = 123;`,
+      [
+        {
+          findingType: 'export',
+          linkType: 'cjs',
+          symbols: [
+            {
+              local: null,
+              remote: 'x',
+              line: 1,
+            },
+          ],
+        },
+      ]);
   });
   xit('module.exports = {}', () => {
+    return runImpExpTest(
+      `module.exports = { a, /* @prebake.eager */b: c };`,
+      [
+        {
+          findingType: 'export',
+          linkType: 'cjs',
+          symbols: [
+            {
+              local: 'a',
+              remote: 'a',
+              line: 1,
+            },
+            {
+              remote: 'b',
+              stage: 'eager',
+              line: 1,
+            },
+          ],
+        },
+      ]);
     // TODO
   });
   xit('module.exports = y', () => {
     // TODO
+  });
+  xit('module.exports masked', () => {
+    return runImpExpTest(
+      `function f(module) { module.exports = { a: 1 }; }`,
+      []);
   });
 });

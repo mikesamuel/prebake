@@ -9,12 +9,12 @@ import { BabelFileResult, Node, transformFromAstAsync, types } from '@babel/core
 import { NodePath } from '@babel/traverse';
 
 export class SymbolFinding {
-  remote: types.Identifier | 'default' | '*';
+  remote: types.Identifier | 'default' | '*' | null;
   local: types.Identifier | '*' | null;
   stage: Stage | null;
 
   constructor(
-    remote: types.Identifier | 'default' | '*',
+    remote: types.Identifier | 'default' | '*' | null,
     local: types.Identifier | '*' | null,
     stage: Stage | null
   ) {
@@ -26,16 +26,16 @@ export class SymbolFinding {
   get linenum() {
     return typeof this.local !== 'string' && this.local && this.local.loc
       ? this.local.loc.start.line
-      : typeof this.remote !== 'string' && this.remote.loc
+      : typeof this.remote !== 'string' && this.remote && this.remote.loc
       ? this.remote.loc.start.line
       : null;
   }
 
   toJSON(): {
-    remote: string, local: string | null, line: number | null, stage: Stage | null,
+    remote: string | null, local: string | null, line: number | null, stage: Stage | null,
   } {
     return {
-      remote: typeof this.remote === 'string' ? this.remote : this.remote.name,
+      remote: typeof this.remote === 'string' ? this.remote : this.remote ? this.remote.name : null,
       local: typeof this.local === 'string' ? this.local : this.local ? this.local.name : null,
       line: this.linenum,
       stage: this.stage,
@@ -143,7 +143,10 @@ Promise<BabelFileResult | null> {
                       } else {
                         destructure(
                           declarator.id,
-                          (idNode: types.Identifier, contextNodes: Node[]) => {
+                          (idNode: types.Identifier,
+                           // @ts-ignore unused
+                           left, depth,
+                           contextNodes: Node[]) => {
                             let { leadingComments } = idNode;
                             for (let i = 0, n = contextNodes.length;
                                  !leadingComments && i < n; ++i) {
@@ -203,42 +206,127 @@ Promise<BabelFileResult | null> {
               console.log(JSON.stringify(path.node, null, 2));
               throw new Error('TODO' + path);
             },
+            CallExpression(path: NodePath) {
+              const node = path.node as types.CallExpression;
+              if (node.callee.type === 'Identifier' && node.callee.name === 'require'
+                  && node.arguments.length && node.arguments[0].type === 'StringLiteral'
+                  && !path.scope.hasBinding('require')) {
+                const target = node.arguments[0] as types.StringLiteral;
+                const symbols: SymbolFinding[] = [];
+                if (path.parentPath) {
+                  const parent = path.parentPath.node;
+                  let left = null;
+                  if (parent.type === 'VariableDeclarator') {
+                    left = parent.id;
+                  } // TODO: AssignmentExpression
+
+                  if (left) {
+                    if (left.type === 'Identifier') {
+                      const stage = stageFromComments(
+                        left.leadingComments || parent.leadingComments);
+                      symbols.push(new SymbolFinding('*', left as types.Identifier, stage));
+                    } else {
+                      destructure(
+                        left,
+                        (local, left, depth, contextNodes) => {
+                          let { leadingComments } = local;
+                          for (let i = 0, n = contextNodes.length;
+                               !leadingComments && i < n; ++i) {
+                            ({ leadingComments } = contextNodes[i]);
+                          }
+                          const remote = depth === 1 ? left : null;
+                          const stage = stageFromComments(leadingComments);
+                          symbols.push(new SymbolFinding(remote, local, stage));
+                        });
+                    }
+                  }
+                }
+                out.push(new ImportExportFinding('import', 'cjs', target, symbols));
+              }
+            },
+            AssignmentExpression(path: NodePath) {
+              const node = path.node as types.AssignmentExpression;
+              if (node.operator !== '=' || node.left.type !== 'MemberExpression') {
+                return;
+              }
+
+              function isModuleDotExports(e: types.Expression) {
+                return e.type === 'MemberExpression'
+                  && e.object.type === 'Identifier'
+                  && e.object.name === 'module'
+                  && e.property.type === 'Identifier'
+                  && e.property.name === 'exports'
+                  && !path.scope.hasBinding('module');
+              }
+
+              if (isModuleDotExports(node.left)) {
+                // module.exports = ...;
+                console.log(JSON.stringify(path.node, (k, v) => k === 'loc' ? undefined : v, 2));
+
+              } else if (node.left.type === 'MemberExpression'
+                         && isModuleDotExports(node.left.object)) {
+                // module.exports.foo = ...;
+                if (node.left.property.type === 'Identifier') {
+                  const stage = stageFromComments(
+                    node.left.property.leadingComments
+                      || node.left.leadingComments
+                      || node.leadingComments);
+                  const symbol = new SymbolFinding(node.left.property, null, stage);
+                  out.push(new ImportExportFinding('export', 'cjs', null, [symbol]));
+                }
+              }
+            }
           },
         },
       ],
     });
 }
 
-function destructure(p: Node, cb: (id: types.Identifier, context: Node[]) => void,
-                     context: Node[] = []) {
+function destructure(
+  // The node to destructure
+  p: Node,
+  // A callback that receives
+  cb: (id: types.Identifier,
+       left: types.Identifier | '*' | null,
+       depth: number,
+       context: Node[]) => void,
+  // Number of objects or array patterns surrounding p.
+  depth = 0,
+  // The name of the property in the innermost object or array.
+  left: types.Identifier | '*' | null = null,
+  // Nodes that contain p and do not have a token before the start of p.
+  context: Node[] = []) {
   const len = context.length;
   switch (p.type) {
-    case 'AssignmentPattern':
+    case 'AssignmentPattern': {
       // Assignment of a default value
       context[len] = p;
-      destructure(p.left, cb, context);
+      destructure(p.left, cb, depth, null, context);
       break;
+    }
     case 'Identifier':
-      cb(p, context);
+      cb(p, left, depth, context);
       break;
     case 'ObjectPattern':
       for (const property of p.properties) {
-        destructure(property, cb);
+        destructure(property, cb, depth + 1);
       }
       break;
-    case 'ObjectProperty':
+    case 'ObjectProperty': {
       context[len] = p;
-      destructure(p.value, cb, context);
+      const leftId = p.key.type === 'Identifier' ? p.key as types.Identifier : null;
+      destructure(p.value, cb, depth, leftId, context);
       break;
+    }
     case 'ArrayPattern':
       for (const element of p.elements) {
         if (element) {
-          destructure(element, cb);
+          destructure(element, cb, depth + 1);
         }
       }
       break;
     case 'RestElement':
-      destructure(p.argument, cb);
+      destructure(p.argument, cb, depth, '*');
       break;
     case 'MemberExpression':
     default:
