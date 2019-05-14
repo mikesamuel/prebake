@@ -413,35 +413,73 @@ describe('rewriter/find-imports-exports', () => {
         },
       ]);
   });
-  xit('module.exports = {}', () => {
+  it('module.exports = {}', () => {
     return runImpExpTest(
-      `module.exports = { a, /* @prebake.eager */b: c };`,
+      `
+      module.exports = {
+        a,
+        /* @prebake.eager */ b: c,
+        d() {},
+        [e]: f,
+        // Namespace export
+        g: require('foo'),
+        // Fold another module's exports into this module's.
+        ...require('bar'),
+      };`,
       [
+        {
+          findingType: 'export',
+          linkType: 'cjs',
+          moduleSpecifier: 'foo',
+          symbols: [
+            {
+              remote: 'g',
+              local: '*',
+              line: 8,
+            },
+          ],
+        },
+        {
+          findingType: 'export',
+          linkType: 'cjs',
+          moduleSpecifier: 'bar',
+          symbols: [
+            {
+              local: '*',
+              remote: '*',
+            },
+          ],
+        },
         {
           findingType: 'export',
           linkType: 'cjs',
           symbols: [
             {
-              local: 'a',
               remote: 'a',
-              line: 1,
+              line: 3,
             },
             {
               remote: 'b',
               stage: 'eager',
-              line: 1,
+              line: 4,
+            },
+            {
+              remote: 'd',
+              line: 5,
             },
           ],
         },
       ]);
-    // TODO
   });
-  xit('module.exports = y', () => {
-    // TODO
+  xit('module.exports = require(...)', () => {
+    // Is this actually used as an idiom for re-exporting another module's content as one's own?
   });
   xit('module.exports masked', () => {
     return runImpExpTest(
       `function f(module) { module.exports = { a: 1 }; }`,
       []);
+  });
+  xit('local = require(...).remote', () => {
+    // Cherrypick import
   });
 });

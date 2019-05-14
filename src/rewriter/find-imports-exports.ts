@@ -93,6 +93,14 @@ function stageFromComments(comments: ReadonlyArray<types.Comment> | null): Stage
 
 export function findImportsExports(n: Node, out: ImportExportFinding[]):
 Promise<BabelFileResult | null> {
+  const processed: Set<Node> = new Set();
+
+  function isRequire(node: Node, path: NodePath) {
+    return node.type === 'CallExpression' && node.callee.type === 'Identifier'
+      && node.callee.name === 'require' && node.arguments.length
+      && node.arguments[0].type === 'StringLiteral' && !path.scope.hasBinding('require');
+  }
+
   return transformFromAstAsync(
     n,
     undefined,
@@ -203,14 +211,12 @@ Promise<BabelFileResult | null> {
               out.push(new ImportExportFinding('export', 'esm', null, symbols));
             },
             ExportAllDeclaration(path: NodePath) {
-              console.log(JSON.stringify(path.node, null, 2));
+              console.log(JSON.stringify(path.node, (k, v) => k === 'loc' ? undefined : v, 2));
               throw new Error('TODO' + path);
             },
             CallExpression(path: NodePath) {
               const node = path.node as types.CallExpression;
-              if (node.callee.type === 'Identifier' && node.callee.name === 'require'
-                  && node.arguments.length && node.arguments[0].type === 'StringLiteral'
-                  && !path.scope.hasBinding('require')) {
+              if (isRequire(node, path) && !processed.has(node)) {
                 const target = node.arguments[0] as types.StringLiteral;
                 const symbols: SymbolFinding[] = [];
                 if (path.parentPath) {
@@ -259,23 +265,72 @@ Promise<BabelFileResult | null> {
                   && !path.scope.hasBinding('module');
               }
 
-              if (isModuleDotExports(node.left)) {
+              const { left, right } = node;
+              if (isModuleDotExports(left)) {
                 // module.exports = ...;
-                console.log(JSON.stringify(path.node, (k, v) => k === 'loc' ? undefined : v, 2));
-
-              } else if (node.left.type === 'MemberExpression'
-                         && isModuleDotExports(node.left.object)) {
+                if (right.type === 'ObjectExpression') {
+                  const symbols: SymbolFinding[] = [];
+                  for (const property of right.properties) {
+                    switch (property.type) {
+                      case 'ObjectMethod':
+                      case 'ObjectProperty': {
+                        const { computed, key } = property;
+                        if (!computed && key.type === 'Identifier') {
+                          const stage = stageFromComments(
+                            key.leadingComments || property.leadingComments);
+                          if (property.type === 'ObjectProperty') {
+                            const value = property.value;
+                            if (isRequire(value, path)) {  // Namespace export
+                              const call = value as types.CallExpression;
+                              processed.add(call);
+                              out.push(new ImportExportFinding(
+                                'export', 'cjs', (call.arguments[0] as types.StringLiteral),
+                                [
+                                  new SymbolFinding(key, '*', stage),
+                                ]));
+                              break;
+                            }
+                          }
+                          symbols.push(new SymbolFinding(key, null, stage));
+                        }
+                        break;
+                      }
+                      case 'SpreadElement': {
+                        const { argument } = property;
+                        if (isRequire(argument, path)) {
+                          const call = argument as types.CallExpression;
+                          processed.add(call);
+                          const stage = stageFromComments(
+                            argument.leadingComments || property.leadingComments);
+                          out.push(new ImportExportFinding(
+                            'export', 'cjs', (call.arguments[0] as types.StringLiteral),
+                            [
+                              new SymbolFinding('*', '*', stage),
+                            ]));
+                        }
+                        break;
+                      }
+                      default:
+                        throw new Error((property as Node).type);
+                    }
+                  }
+                  out.push(new ImportExportFinding('export', 'cjs', null, symbols));
+                } else {
+                  console.log(JSON.stringify(node, (k, v) => k === 'loc' ? undefined : v, 2));
+                }
+              } else if (left.type === 'MemberExpression'
+                         && isModuleDotExports(left.object)) {
                 // module.exports.foo = ...;
-                if (node.left.property.type === 'Identifier') {
+                if (left.property.type === 'Identifier') {
                   const stage = stageFromComments(
-                    node.left.property.leadingComments
-                      || node.left.leadingComments
+                    left.property.leadingComments
+                      || left.leadingComments
                       || node.leadingComments);
-                  const symbol = new SymbolFinding(node.left.property, null, stage);
+                  const symbol = new SymbolFinding(left.property, null, stage);
                   out.push(new ImportExportFinding('export', 'cjs', null, [symbol]));
                 }
               }
-            }
+            },
           },
         },
       ],
@@ -331,7 +386,7 @@ function destructure(
     case 'MemberExpression':
     default:
       console.log(JSON.stringify(p, null, 2));
-      throw new Error('TODO');
+      throw new Error('TODO ' + p.type);
   }
   context.length = len;
 }
