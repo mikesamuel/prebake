@@ -1,3 +1,8 @@
+/**
+ * @fileoverview
+ * Options used to parse prebakeable modules.
+ */
+
 import { TransformOptions } from '@babel/core';
 
 export const parseOptions: TransformOptions = {

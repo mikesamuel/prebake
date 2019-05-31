@@ -5,7 +5,7 @@
  */
 
 import { LinkType, Stage } from './io';
-import { BabelFileResult, Node, transformFromAstAsync, types } from '@babel/core';
+import { Node, transformFromAstAsync, types } from '@babel/core';
 import { NodePath } from '@babel/traverse';
 
 export class SymbolFinding {
@@ -91,8 +91,7 @@ function stageFromComments(comments: ReadonlyArray<types.Comment> | null): Stage
 }
 
 
-export function findImportsExports(n: Node, out: ImportExportFinding[]):
-Promise<BabelFileResult | null> {
+export async function findImportsExports(n: Node): Promise<ImportExportFinding[]> {
   const processed: Set<Node> = new Set();
 
   function isRequire(node: Node, path: NodePath) {
@@ -101,7 +100,8 @@ Promise<BabelFileResult | null> {
       && node.arguments[0].type === 'StringLiteral' && !path.scope.hasBinding('require');
   }
 
-  return transformFromAstAsync(
+  const out: ImportExportFinding[] = [];
+  await transformFromAstAsync(
     n,
     undefined,
     {
@@ -335,6 +335,7 @@ Promise<BabelFileResult | null> {
         },
       ],
     });
+  return out;
 }
 
 function destructure(

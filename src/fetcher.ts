@@ -1,6 +1,5 @@
 import { CanonModuleId } from './module-id';
 import { CassandraEvent } from './cassandra';
-import { FetchContext } from './fetcher';
 import { ModuleMetadata } from './module-metadata';
 import { readFile, realpath } from 'fs';
 import { URL, fileURLToPath, pathToFileURL } from 'url';
