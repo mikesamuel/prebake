@@ -16,9 +16,8 @@ function norm(x) {
 }
 
 async function runImpExpTest(source, want) {
-  const outputs = [];
   const ast = parseSync(source, parseOptions);
-  await findImportsExports(ast, outputs);
+  const outputs = await findImportsExports(ast);
   expect(norm(want)).to.deep.equal(norm(outputs));
 }
 
