@@ -18,22 +18,32 @@ describe('cases', () => {
     const inpJsPath = path.join(caseDir, 'inp.js');
     if (fs.existsSync(inpJsPath)) {
       it(subDir, (done) => {
+        const logEntries = [];
+        const cassandra = (event) => {
+          logEntries.push(event);
+        };
         const prebakery = new Prebakery(
           fileSystemFetcher,
+          cassandra,
           new CanonModuleId(
             pathToFileURL(caseDir),
             pathToFileURL(fs.realpathSync.native(caseDir))));
         const parts = inpJsPath.split(path.sep).filter(Boolean);
-        const inpUrl = new URL(`file:///${ parts.map(encodeURIComponent).join('/') }`);
-        prebakery.prebake(new TentativeModuleId(inpUrl)).then(
-          (moduleMap) => {
-            for (const [key, value] of moduleMap.entries()) {
-              console.log(`TEST GOT ${ require('util').inspect(key) }: ${ value.bakedSource || value.error }`);
+        const inpModuleSpecifier = `/${ parts.map(encodeURIComponent).join('/') }`;
+        prebakery.prebake(inpModuleSpecifier).then(
+          ({ modules, specifierToId }) => {
+            const got = { specifierToId, logEntries, modules: {} };
+            for (const [key, value] of modules.entries()) {
+              got.modules[key] = value.source || value.errors;
             }
+            // TODO: compare got to golden
             done();
           },
           (error) => {
-            done(error)
+            for (const { level, line, message, moduleId } of logEntries) {
+              console.log(`${ moduleId }:${ line }:${ level }: ${ message }`);
+            }
+            done(error);
           });
       });
     }

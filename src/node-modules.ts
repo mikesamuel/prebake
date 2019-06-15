@@ -16,7 +16,8 @@ export function isBuiltin(moduleSpecifier: string): boolean {
   // TODO: maybe just use https://www.npmjs.com/package/builtin-modules
   // Alternatively, could use require.resolve.paths since that does not throw.
   try {
-    return moduleSpecifier === require.resolve(moduleSpecifier);
+    return !/^[./]|[\\:]/.test(moduleSpecifier)
+        && moduleSpecifier === require.resolve(moduleSpecifier);
   } catch (e) {
     return false;
   }

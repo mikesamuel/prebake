@@ -22,7 +22,7 @@ import { cwd } from 'process';
 import { CassandraEvent, Cassandra } from '../cassandra';
 import { FetchContext } from '../fetcher';
 import { ErrorModule, Module, ResolvedModule, RewrittenModule } from '../module';
-import { CanonModuleId } from '../module-id';
+import { CanonModuleId, ModuleKey } from '../module-id';
 import { ModuleSet } from '../module-set';
 
 import { findImportsExports } from './find-imports-exports';
@@ -38,15 +38,11 @@ import { NodePath } from '@babel/traverse';
 
 const pwd = cwd();
 
-function keyOf(id: CanonModuleId): string {
-  return id.canon.href;
-}
-
 export class Rewriter {
   private moduleSet: ModuleSet;
   private cassandra: Cassandra;
   /** Maps canon URL to module IO. */
-  private jobs: Map<string, Job> = new Map();
+  private jobs: Map<ModuleKey, Job> = new Map();
 
   constructor(moduleSet: ModuleSet, cassandra: Cassandra) {
     this.moduleSet = moduleSet;
@@ -57,7 +53,7 @@ export class Rewriter {
   }
 
   private async rewrite(m: ResolvedModule): Promise<void> {
-    const moduleKey = keyOf(m.id);
+    const moduleKey = m.id.key();
     const job = this.jobs.get(moduleKey) || new Job(m.id);
     this.jobs.set(moduleKey, job);
     if (job.state !== 'unstarted') {
@@ -181,7 +177,7 @@ export class Rewriter {
   }
 
   private addDependency(src: Job, tgtId: CanonModuleId): void {
-    const tgtKey = keyOf(tgtId);
+    const tgtKey = tgtId.key();
     const tgt = this.jobs.get(tgtKey) || new Job(tgtId);
     this.jobs.set(tgtKey, tgt);
     tgt.rdeps.push(src);
