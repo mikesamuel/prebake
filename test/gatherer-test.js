@@ -109,26 +109,25 @@ describe('gatherer', () => {
     }
 
     function wantResolved(m) {
-      const got = JSON.stringify(m, skipNull);
-      const want = JSON.stringify({
+      const got = JSON.parse(JSON.stringify(m, skipNull));
+      const want = JSON.parse(JSON.stringify({
         id: {
           abs: 'javascript:alert( 1 )',
           canon: 'javascript:alert(%201%20)',
         },
         source: 'alert( 1 )',
         metadata: {
-          base: {
-            abs: 'about:allyourbase',
-            canon: 'about:allyourbase',
-          },
+          base: 'about:allyourbase',
           properties: {},
         },
-      });
-      if (want !== got) {
-        done(new Error(`Got ${ want } but wanted ResolvedModule ${ got }`));
-      } else {
-        done();
+      }));
+      try {
+        expect(got).to.deep.equal(want);
+      } catch (exc) {
+        done(exc);
+        return;
       }
+      done();
     }
   });
 
@@ -212,18 +211,15 @@ describe('gatherer', () => {
           },
           source: 'alert( 1 )',
           metadata: {
-            base: {
-              // The base in the metadata is the first base from which it was fetched.
-              abs: 'id:foo',
-              canon: 'id:foo',
-            },
+            // The base in the metadata is the first base from which it was fetched.
+            base: 'id:foo',
             properties: {},
           },
         }
       ];
       want[3] = want[2] = want[1] = want[0];
       try {
-        expect(want).to.deep.equal(got);
+        expect(got).to.deep.equal(want);
       } catch (ex) {
         done(ex);
         return;

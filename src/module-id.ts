@@ -53,8 +53,17 @@ export class CanonModuleId implements ModuleId {
     return this.canon.href;
   }
 
-  toJSON(): string {
-    return this.key();
+  /**
+   * A diagnostic representation.
+   * This uses the string form of the canon URL where the abs URL is the same.
+   */
+  toJSON(): string | { abs: string, canon: string } {
+    const { href: canon } = this.canon;
+    const { href: abs } = this.abs;
+    if (canon === abs) {
+      return canon;
+    }
+    return { abs, canon };
   }
 }
 
@@ -77,7 +86,7 @@ export class TentativeModuleId implements ModuleId {
     return this.abs.href;
   }
 
-  toJSON(): { [key: string]: string } {
-    return { tentative: this.key() };
+  toJSON(): { abs: string } {
+    return { abs: this.key() };
   }
 }
