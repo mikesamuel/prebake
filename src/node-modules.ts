@@ -62,7 +62,10 @@ export async function resolve(moduleSpecifier: string, base: URL): Promise<URL |
   if (isBuiltin(moduleSpecifier)) {
     return new URL(`builtin:${ moduleSpecifier }`);
   }
-  if (base.protocol === 'file:') {
+  if (base.protocol === 'file:'
+      // Per CommonJS and ESM rules, specifiers that start with '/', './', or '../' resolve
+      // relative to base, not via a node_modules lookup path.
+      && !/^[.]{0,2}[/]/.test(moduleSpecifier)) {
     const paths: string[] = await pathsRelativeTo(fileURLToPath(base));
     try {
       return pathToFileURL(require.resolve(moduleSpecifier, { paths }));
