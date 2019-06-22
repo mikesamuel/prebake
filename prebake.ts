@@ -3,7 +3,7 @@ import { realpathSync } from 'fs';
 import { pathToFileURL } from 'url';
 
 import { FetchContext, Fetcher } from './src/fetcher';
-import { Module, RewrittenModule } from './src/module';
+import { Module, ResolvedModule, RewrittenModule } from './src/module';
 import { CanonModuleId, ModuleId, ModuleKey } from './src/module-id';
 import { Cassandra } from './src/cassandra';
 import { ModuleSet } from './src/module-set';
@@ -35,7 +35,7 @@ export class Prebakery {
         pathToFileURL(realpathSync.native(dir)));
     }
     this.baseModuleId = baseModuleId;
-    this.moduleSet = new ModuleSet();
+    this.moduleSet = new ModuleSet(cassandra);
 
     // Fetches new modules as needed.
     this.gatherer = new Gatherer(fetcher, this.cassandra, this.moduleSet);
@@ -61,6 +61,12 @@ export class Prebakery {
       const p = this.moduleSet.fetch(moduleSpecifier, fetchContext).then(
         async (m: Module): Promise<Module> => {
           specifierToId.set(moduleSpecifier, m.id);
+          if (m.id.canon === null) {
+            this.moduleSet.onPromotionTo(m, ResolvedModule.prototype.constructor).then(
+              (rm) => {
+                specifierToId.set(moduleSpecifier, rm.id);
+              });
+          }
           return m;
         });
       resolutionPromises.push(p);

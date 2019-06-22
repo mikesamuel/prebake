@@ -70,7 +70,7 @@ describe('gatherer', () => {
 
   beforeEach(() => {
     messages.length = 0;
-    moduleSet = new ModuleSet();
+    moduleSet = new ModuleSet(cassandra);
   });
 
   afterEach(() => {

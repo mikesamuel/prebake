@@ -10,12 +10,13 @@
  * it should be easy for stages to know when to stop waiting.
  */
 
-import { ModuleId, ModuleKey, TentativeModuleId } from './module-id';
+import { Cassandra } from './cassandra';
 import { FetchContext } from './fetcher';
 import {
   CanonModule, ErrorModule, Module, ResolvedModule, UnresolvedModule,
-  ModuleSubtype, compareModuleStage,
+  ModuleError, ModuleSubtype, compareModuleStage,
 } from './module';
+import { ModuleId, ModuleKey, TentativeModuleId } from './module-id';
 import { resolve } from './node-modules';
 
 /** Separable handles to a promise and a function that will cause it to resolve. */
@@ -42,6 +43,7 @@ function createResolvable<T>(): Resolvable<T> {
  * A set of modules.
  */
 export class ModuleSet {
+  private cassandra: Cassandra;
   /** Maps string forms of module ids to module. */
   private idToModule: Map<ModuleKey, Module> = new Map();
   /**
@@ -55,6 +57,10 @@ export class ModuleSet {
     new WeakMap();
   /** Called when an unseen tentative module id enters idToModule. */
   private promotionCallbacks: Map<ModuleSubtype<Module>, ((m: Module) => void)[]> = new Map();
+
+  constructor(cassandra: Cassandra) {
+    this.cassandra = cassandra;
+  }
 
   /** The module identified by the given ID if any. */
   get(moduleId: ModuleId): Module | null {
@@ -229,28 +235,28 @@ export class ModuleSet {
   async fetch(moduleIdStr: string, context: FetchContext): Promise<Module> {
     const base = context.moduleId;
     let absUrl = null;
-    let error = null;
+    let failure = null;
     try {
       absUrl = await resolve(moduleIdStr, base.abs);
     } catch (exc) {
-      error = exc;
+      failure = exc;
     }
     if (absUrl === null) {
+      const error: ModuleError = {
+        level: 'error',
+        moduleId: base,
+        line: context.line,
+        message: failure
+          ? failure.message
+          : `Failed to resolve module ${ moduleIdStr } relative to ${ base.abs.href }`
+      };
+      this.cassandra(error);
       const errorModule = new ErrorModule(
         new UnresolvedModule(
           new TentativeModuleId(new URL(
             `invalid-id:${ encodeURIComponent(moduleIdStr) }`)),
           context),
-        [
-          {
-            level: 'error',
-            moduleId: base,
-            line: context.line,
-            message: error
-              ? error.message
-              : `Failed to resolve module ${ moduleIdStr } relative to ${ base.abs.href }`
-          }
-        ]);
+        [ error ]);
       return this.set(errorModule);
     } else {
       const tentativeId: TentativeModuleId = new TentativeModuleId(absUrl);

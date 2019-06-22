@@ -52,6 +52,10 @@ export class CanonModuleId implements ModuleId {
   key() {
     return this.canon.href;
   }
+
+  toJSON(): string {
+    return this.key();
+  }
 }
 
 /** A module id whose canonical URL is not yet known. */
@@ -71,5 +75,9 @@ export class TentativeModuleId implements ModuleId {
 
   key() {
     return this.abs.href;
+  }
+
+  toJSON(): { [key: string]: string } {
+    return { tentative: this.key() };
   }
 }
