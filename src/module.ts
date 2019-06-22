@@ -26,6 +26,8 @@ export const es262: ModuleKind = 'es262';
 
 export type ModuleError = CassandraEvent;
 
+export type ModuleSubtype<T extends Module> = new (...args: unknown[]) => T;
+
 /**
  * Corresponds to an ES or CJS module.
  */
@@ -210,12 +212,28 @@ const stageOrder: Map<Function, number> = new Map([
  * If a is later stage returns 1, -1 if earlier, 0 if same.
  * Assumes that a Module is an instance of one of the classes defined herein.
  */
-export function compareModuleStage(a: Module, b: Module): (-1 | 0 | 1) {
-  const aNum = stageOrder.get(a.constructor);
+export function compareModuleStage(
+  a: Module | ModuleSubtype<Module>, b: Module | ModuleSubtype<Module>
+): (-1 | 0 | 1) {
+  let aCtor;
+  if (typeof a === 'function') {
+    aCtor = a;
+  } else {
+    aCtor = a.constructor;
+  }
+
+  let bCtor;
+  if (typeof b === 'function') {
+    bCtor = b;
+  } else {
+    bCtor = b.constructor;
+  }
+
+  const aNum = stageOrder.get(aCtor);
   if (typeof aNum !== 'number') {
     throw new Error(`Unrecognized module: ${ a }`);
   }
-  const bNum = stageOrder.get(b.constructor);
+  const bNum = stageOrder.get(bCtor);
   if (typeof bNum !== 'number') {
     throw new Error(`Unrecognized module: ${ b }`);
   }

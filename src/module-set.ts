@@ -14,11 +14,9 @@ import { ModuleId, ModuleKey, TentativeModuleId } from './module-id';
 import { FetchContext } from './fetcher';
 import {
   CanonModule, ErrorModule, Module, ResolvedModule, UnresolvedModule,
-  compareModuleStage,
+  ModuleSubtype, compareModuleStage,
 } from './module';
 import { resolve } from './node-modules';
-
-type ModuleSubtype<T extends Module> = new (...args: unknown[]) => T;
 
 /** Separable handles to a promise and a function that will cause it to resolve. */
 interface Resolvable<T> {
@@ -201,6 +199,17 @@ export class ModuleSet {
    */
   onPromotionTo<T extends CanonModule>(m: Module, subtype: ModuleSubtype<T>):
       Promise<T | ErrorModule> {
+    if (m instanceof ErrorModule || m instanceof subtype) {
+      // Error modules do not make progress, and a module
+      // that has already reached the given stage will not
+      // progress back to that stage since progression is monotonic.
+      return Promise.resolve(m);
+    }
+
+    if (compareModuleStage(m, subtype) > 0) {
+      throw new Error(`Module ${ m.id } already passed stage ${ subtype.name }`);
+    }
+
     let typeMap = this.toNotifyOnPromotion.get(m);
     if (!typeMap) {
       typeMap = new Map();
@@ -219,7 +228,13 @@ export class ModuleSet {
    */
   async fetch(moduleIdStr: string, context: FetchContext): Promise<Module> {
     const base = context.moduleId;
-    const absUrl = await resolve(moduleIdStr, base.abs);
+    let absUrl = null;
+    let error = null;
+    try {
+      absUrl = await resolve(moduleIdStr, base.abs);
+    } catch (exc) {
+      error = exc;
+    }
     if (absUrl === null) {
       const errorModule = new ErrorModule(
         new UnresolvedModule(
@@ -231,7 +246,9 @@ export class ModuleSet {
             level: 'error',
             moduleId: base,
             line: context.line,
-            message: `Failed to resolve module ${ moduleIdStr } relative to ${ base.abs.href }`
+            message: error
+              ? error.message
+              : `Failed to resolve module ${ moduleIdStr } relative to ${ base.abs.href }`
           }
         ]);
       return this.set(errorModule);
