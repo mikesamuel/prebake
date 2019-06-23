@@ -1,1 +1,20 @@
-{}
+{
+  "specifierToId": {
+    "$BASEDIR/inp.js": "$BASEURL/inp.js"
+  },
+  "logEntries": [],
+  "modules": {
+    "$BASEURL/inp.js": {
+      "source": "import { f } from './dep.js';\n\nconst x = f();\n",
+      "deps": [
+        "$BASEURL/dep.js"
+      ]
+    },
+    "$BASEURL/dep.js": {
+      "source": "export /* @pb.evap */ function f() { return 1234; };\n",
+      "rdeps": [
+        "$BASEURL/inp.js"
+      ]
+    }
+  }
+}
