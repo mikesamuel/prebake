@@ -39,6 +39,8 @@ export interface Module {
   rewrittenAst: Node | null;
   swissAst: Node | null;
   outputAst: Node | null;
+  deps: CanonModuleId[] | null;
+  rdeps: CanonModuleId[] | null;
   errors: ModuleError[] | null;
 
   constructor: new (...args: unknown[]) => this;
@@ -61,6 +63,8 @@ export interface UnresolvedModule extends Module {
   originalAst: null;
   rewrittenAst: null;
   swissAst: null;
+  deps: null;
+  rdeps: null;
   errors: null;
 }
 export class UnresolvedModule {
@@ -68,6 +72,8 @@ export class UnresolvedModule {
   originalAst = null;
   rewrittenAst = null;
   swissAst = null;
+  deps = null;
+  rdeps = null;
   errors = null;
   // @ts-ignore never used
   private notStructural: null = null;
@@ -90,12 +96,16 @@ export interface ResolvedModule extends CanonModule {
   originalAst: null;
   rewrittenAst: null;
   swissAst: null;
+  deps: null;
+  rdeps: null;
   errors: null;
 }
 export class ResolvedModule {
   originalAst = null;
   rewrittenAst = null;
   swissAst = null;
+  deps = null;
+  rdeps = null;
   errors = null;
   // @ts-ignore never used
   private notStructural: null = null;
@@ -115,6 +125,8 @@ export interface RewrittenModule extends CanonModule {
   originalAst: Node;
   rewrittenAst: Node;
   swissAst: Node;
+  deps: CanonModuleId[];
+  rdeps: CanonModuleId[];
   errors: null;
 }
 export class RewrittenModule {
@@ -122,13 +134,17 @@ export class RewrittenModule {
   // @ts-ignore never used
   private notStructural: null = null;
 
-  constructor(m: ResolvedModule, originalAst: Node, rewrittenAst: Node, swissAst: Node) {
+  constructor(
+    m: ResolvedModule, originalAst: Node, rewrittenAst: Node, swissAst: Node,
+    deps: CanonModuleId[], rdeps: CanonModuleId[]) {
     this.id = m.id;
     this.source = m.source;
     this.metadata = m.metadata;
     this.originalAst = originalAst;
     this.rewrittenAst = rewrittenAst;
     this.swissAst = swissAst;
+    this.deps = [...deps];
+    this.rdeps = [...rdeps];
   }
 }
 
@@ -140,6 +156,8 @@ export interface OutputModule extends CanonModule {
   originalAst: Node;
   rewrittenAst: Node;
   swissAst: Node;
+  deps: CanonModuleId[];
+  rdeps: CanonModuleId[];
   outputAst: Node;
   errors: null;
 }
@@ -155,6 +173,8 @@ export class OutputModule {
     this.originalAst = m.originalAst;
     this.rewrittenAst = m.rewrittenAst;
     this.swissAst = m.swissAst;
+    this.deps = m.deps;
+    this.rdeps = m.rdeps;
     this.outputAst = outputAst;
   }
 }
@@ -179,6 +199,8 @@ export class ErrorModule {
     this.originalAst = m.originalAst;
     this.rewrittenAst = m.rewrittenAst;
     this.swissAst = m.swissAst;
+    this.deps = m.deps;
+    this.rdeps = m.rdeps;
     this.outputAst = m.outputAst;
 
     this.errors = [...errors];

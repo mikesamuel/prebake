@@ -38,6 +38,15 @@ import { NodePath } from '@babel/traverse';
 
 const pwd = cwd();
 
+function sortedJobIds(jobs: Job[]): CanonModuleId[] {
+  const arr = jobs.map(({ id }) => id);
+  arr.sort(
+    ({ canon: { href: a } }, { canon: { href: b } }) =>
+      a < b ? -1 : a === b ? 0 : 1);
+  return arr;
+}
+
+
 export class Rewriter {
   private moduleSet: ModuleSet;
   private cassandra: Cassandra;
@@ -125,33 +134,16 @@ export class Rewriter {
         line,
         message: 'import/export',
       };
-      this.moduleSet.fetch(moduleIdStr, context).then(
-        (dep: Module) => {
-          job.unresolved.splice(job.unresolved.indexOf(moduleSpecifier), 1);
-
-          const { errors, id: depId } = dep;
-          if (!errors && depId instanceof CanonModuleId) {
-            this.addDependency(job, depId);
-          } else {
-            if (!(errors && errors.length)) {
-              this.cassandra({
-                level: 'error',
-                moduleId: m.id,
-                line,
-                message: `Import ${ JSON.stringify(moduleIdStr) } is missing a canonical URL`,
-              });
-            }
-            const ce: CassandraEvent = {
-              level: 'error',
-              moduleId: m.id,
-              line,
-              message: `Import of ${ JSON.stringify(moduleIdStr) } failed`,
-            };
-            job.progressComments.push(ce);
-            this.abandon(job, [ce]);
-          }
-        },
-        (err: Error) => {
+      const fetchPromise = this.moduleSet.fetch(moduleIdStr, context);
+      (async () => {
+        let errors = null;
+        let depId = null;
+        try {
+          const udep = await fetchPromise;
+          const dep = await this.moduleSet.onPromotionTo(
+            udep, ResolvedModule.prototype.constructor);
+          ({ errors, id: depId } = dep);
+        } catch (err) {
           const ce: CassandraEvent = {
             level: 'error',
             moduleId: m.id,
@@ -159,8 +151,32 @@ export class Rewriter {
             message: `Import of ${ JSON.stringify(moduleIdStr) } failed: ${ err }`,
           };
           job.progressComments.push(ce);
+          errors = [ce];
+        }
+
+        job.unresolved.splice(job.unresolved.indexOf(moduleSpecifier), 1);
+
+        if (!errors && depId instanceof CanonModuleId) {
+          this.addDependency(job, depId);
+        } else {
+          if (!(errors && errors.length)) {
+            this.cassandra({
+              level: 'error',
+              moduleId: m.id,
+              line,
+              message: `Import ${ JSON.stringify(moduleIdStr) } is missing a canonical URL`,
+            });
+          }
+          const ce: CassandraEvent = {
+            level: 'error',
+            moduleId: m.id,
+            line,
+            message: `Import of ${ JSON.stringify(moduleIdStr) } failed`,
+          };
+          job.progressComments.push(ce);
           this.abandon(job, [ce]);
-        });
+        }
+      })();
     }
 
     this.checkSatisfied(job);
@@ -298,7 +314,8 @@ export class Rewriter {
           throw new Error();
         }
         const swissAst = originalAst;  // TODO
-        this.moduleSet.set(new RewrittenModule(m, originalAst, rewrittenAst, swissAst));
+        this.moduleSet.set(new RewrittenModule(
+          m, originalAst, rewrittenAst, swissAst, sortedJobIds(job.deps), sortedJobIds(job.rdeps)));
       },
       (err: Error) => {
         this.abandon(job, [{

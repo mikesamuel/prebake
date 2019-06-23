@@ -68,6 +68,10 @@ export class ModuleSet {
     return this.idToModule.get(moduleKey) || null;
   }
 
+  modules() {
+    return this.idToModule.values();
+  }
+
   /**
    * Updates the module set to include the given module.
    * If an existing module shares a module ID with newModule then it will be replaced unless
